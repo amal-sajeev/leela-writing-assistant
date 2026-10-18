@@ -1,0 +1,1167 @@
+/*
+ * Lyra.
+ *
+ * Her window is drawn in the manner of a PC-98 visual novel and keeps its own
+ * fixed palette on purpose: it is a little screen from another machine sitting on
+ * top of the editor, and looks the same in a light theme as in a dark one. The
+ * palette is the handful of variables below, so re-skinning it is a matter of
+ * changing those. What she adds to the note itself (underlines, the flash) does
+ * follow the Obsidian theme, because that is part of the author's own page.
+ */
+
+.lyra {
+  --lyra-ink: #0b0a24;
+  --lyra-navy: #14123a;
+  --lyra-navy-lit: #1c1950;
+  --lyra-cream: #f4dfb6;
+  --lyra-cream-lit: #fff6dc;
+  --lyra-cream-dim: #a8875a;
+  --lyra-rose: #c9627a;
+  --lyra-mauve: #a48fb0;
+  --lyra-gold: #e6bd6a;
+  --lyra-cyan: #9fe8ff;
+
+  /*
+   * How wide the window is while she is speaking, and folded away as a fraction
+   * of that. Dragging her corner sets --lyra-open, which replaces the default.
+   */
+  --lyra-width-open: var(--lyra-open, 344px);
+  --lyra-width-folded: calc(var(--lyra-width-open) * 0.512);
+
+  --lyra-font: "DotGothic16", "PixelMplus12", "MS Gothic", "Cascadia Mono", Consolas, "Courier New",
+    monospace;
+}
+
+/*
+ * A column pinned to the bottom-right corner of the editor area: the framed
+ * scene at the bottom, which never moves, and the message box above it, which
+ * grows upward.
+ *
+ * She floats above the whole app rather than sitting inside the editor area,
+ * where Obsidian's pane layout would decide her size. The plugin measures where
+ * that area's corner is and passes it in as --lyra-right, --lyra-bottom and
+ * --lyra-room (its width).
+ */
+.lyra {
+  --lyra-w: var(--lyra-width-folded);
+  --lyra-margin: 16px;
+
+  position: fixed;
+  right: calc(var(--lyra-right, 0px) + var(--lyra-margin));
+  bottom: calc(var(--lyra-bottom, 0px) + var(--lyra-margin));
+  z-index: var(--layer-popover);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  box-sizing: border-box;
+  width: var(--lyra-w);
+  /* Left to herself she keeps inside the area she stands in. */
+  max-width: calc(var(--lyra-room, 100vw) - 2 * var(--lyra-margin));
+  /* How wide she really is: the width asked for, or less where there is no room for it. */
+  --lyra-wide: min(var(--lyra-w), calc(var(--lyra-room, 100vw) - 2 * var(--lyra-margin)));
+  /* Only her window and her words take clicks; the rest passes to the editor. */
+  pointer-events: none;
+  font-family: var(--lyra-font);
+}
+
+.lyra[data-open="true"] {
+  --lyra-w: var(--lyra-width-open);
+}
+
+/* The typing box under her frame, which the message box above must leave room for. */
+.lyra[data-talking="true"] {
+  --lyra-below: 145px;
+}
+
+/*
+ * A size the author dragged her to is theirs to choose: she may then reach out
+ * of her area, and is only stopped by the edge of the app window.
+ */
+.lyra[data-sized="true"] {
+  max-width: calc(var(--lyra-reach, 100vw) - 2 * var(--lyra-margin));
+  --lyra-wide: min(var(--lyra-w), calc(var(--lyra-reach, 100vw) - 2 * var(--lyra-margin)));
+}
+
+/* The corner to drag. Top-left, because she is pinned by the opposite one. */
+.lyra__grip {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+/* Three ticks across the corner, shown when the pointer is near enough to use them. */
+.lyra__grip::after {
+  position: absolute;
+  inset: 4px;
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--lyra-cream) 0 2px,
+    var(--lyra-ink) 2px 4px,
+    transparent 4px 6px
+  );
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  content: "";
+  opacity: 0;
+}
+
+.lyra__window:hover .lyra__grip::after,
+.lyra[data-dragging="true"] .lyra__grip::after {
+  opacity: 1;
+}
+
+/* The count would sit on the grip, so it moves along while the corner is in use. */
+.lyra__plaque {
+  margin-left: 22px;
+}
+
+.lyra > * {
+  pointer-events: auto;
+}
+
+/* The framed scene. The frame image sets the shape; everything else is placed over it. */
+.lyra__window {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  aspect-ratio: 1438 / 920;
+  transition: transform 120ms steps(2);
+}
+
+.lyra[data-open="false"] .lyra__window:hover {
+  transform: translateY(-2px);
+}
+
+/*
+ * Her buttons. Obsidian styles every <button> with a grey fill, a shadow and a
+ * fixed height, by a rule more specific than a single class. So each rule here
+ * that styles a button of hers starts from `.lyra`, which outranks it.
+ */
+/* The opening in the frame, a little oversized so the scene tucks under its edge. */
+.lyra .lyra__stage {
+  position: absolute;
+  top: 8.6%;
+  right: 8.6%;
+  bottom: 12.6%;
+  left: 10.3%;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background-color: var(--lyra-ink);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.lyra[data-open="true"] .lyra__stage {
+  cursor: default;
+}
+
+.lyra__scene {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/*
+ * The old television. Three things lie over her scene, none of which take a
+ * click: scanlines and a darkened edge, which are still; a little grain, which
+ * crawls; and static, which only shows while the scene is changing.
+ */
+.lyra__crt,
+.lyra__static {
+  position: absolute;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+}
+
+.lyra[data-crt="true"] .lyra__crt {
+  display: block;
+  background-image:
+    repeating-linear-gradient(to bottom, rgb(0 0 0 / 0%) 0 2px, rgb(0 0 0 / 17%) 2px 3px),
+    radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 55%, rgb(0 0 0 / 34%) 100%);
+}
+
+/* The grain, on a layer of its own so that only it is redrawn as it moves. */
+.lyra[data-crt="true"] .lyra__crt::after {
+  position: absolute;
+  inset: -40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  content: "";
+  mix-blend-mode: screen;
+  opacity: 0.11;
+  animation: lyra-grain 0.9s steps(1) infinite;
+}
+
+@keyframes lyra-grain {
+  0% {
+    transform: translate(0, 0);
+  }
+
+  17% {
+    transform: translate(-23px, 11px);
+  }
+
+  33% {
+    transform: translate(14px, -29px);
+  }
+
+  50% {
+    transform: translate(-31px, -8px);
+  }
+
+  67% {
+    transform: translate(27px, 19px);
+  }
+
+  83% {
+    transform: translate(-9px, 31px);
+  }
+}
+
+/*
+ * Changing channel. Static covers the picture at once, the picture rolls and
+ * tears underneath while it is swapped, and the static thins out to nothing.
+ * The plugin's CHANNEL_SETTLE_MS is this animation's length.
+ */
+.lyra[data-crt="true"] .lyra__stage.is-switching .lyra__static {
+  display: block;
+  inset: -60px;
+  background-color: #cfcbc2;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='160'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75 0.32' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  3.2 3.2 3.2 0 -4.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%23f4f1ea'/%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E");
+  animation: lyra-static 420ms steps(1) forwards;
+}
+
+.lyra[data-crt="true"] .lyra__stage.is-switching .lyra__scene {
+  animation: lyra-roll 420ms steps(1) forwards;
+}
+
+@keyframes lyra-static {
+  0% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+
+  14% {
+    transform: translate(-37px, 22px);
+    opacity: 1;
+  }
+
+  28% {
+    transform: translate(19px, -41px);
+    opacity: 0.96;
+  }
+
+  44% {
+    transform: translate(-52px, -13px);
+    opacity: 0.82;
+  }
+
+  60% {
+    transform: translate(31px, 37px);
+    opacity: 0.55;
+  }
+
+  76% {
+    transform: translate(-14px, -27px);
+    opacity: 0.3;
+  }
+
+  90% {
+    transform: translate(43px, 9px);
+    opacity: 0.12;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/*
+ * A change of expression while talking: a faint wash of static and a brief dip
+ * in the picture, with no roll or tear. FLICKER_SETTLE_MS is its length.
+ */
+.lyra[data-crt="true"] .lyra__stage.is-flicking .lyra__static {
+  display: block;
+  background-color: #cfcbc2;
+  animation: lyra-flicker 130ms linear forwards;
+}
+
+.lyra[data-crt="true"] .lyra__stage.is-flicking .lyra__scene {
+  animation: lyra-flicker-scene 130ms linear forwards;
+}
+
+@keyframes lyra-flicker {
+  0% {
+    opacity: 0;
+  }
+
+  30% {
+    opacity: 0.22;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes lyra-flicker-scene {
+  0% {
+    filter: none;
+  }
+
+  30% {
+    filter: brightness(1.18) saturate(0.7);
+  }
+
+  100% {
+    filter: none;
+  }
+}
+
+/* The picture losing and finding its hold: a vertical roll, a sideways tear, a flare. */
+@keyframes lyra-roll {
+  0% {
+    transform: translateY(0);
+    filter: brightness(1.6) contrast(1.3);
+  }
+
+  30% {
+    transform: translateY(-22%) skewX(-5deg);
+    filter: brightness(1.9) saturate(0.2);
+  }
+
+  48% {
+    transform: translateY(15%) skewX(4deg);
+    filter: brightness(1.35) saturate(0.5);
+  }
+
+  66% {
+    transform: translateY(-6%) skewX(-1deg);
+    filter: brightness(1.15) saturate(0.8);
+  }
+
+  84% {
+    transform: translateY(2%);
+    filter: none;
+  }
+
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+
+.lyra__frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+.lyra__scene.is-missing,
+.lyra__frame.is-missing {
+  visibility: hidden;
+}
+
+/* Without the frame art there is still a window: a plain bevelled border. */
+.lyra__window:has(.lyra__frame.is-missing) {
+  border: 2px solid var(--lyra-cream);
+  outline: 2px solid var(--lyra-ink);
+  background-color: var(--lyra-navy);
+}
+
+/*
+ * The buttons painted into the frame, made to work: invisible areas over the
+ * artwork, placed by percentage so they follow the window at any size.
+ */
+.lyra .lyra__control {
+  position: absolute;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.lyra .lyra__control:hover {
+  background-color: rgb(244 223 182 / 20%);
+}
+
+.lyra .lyra__control:active {
+  background-color: rgb(11 10 36 / 35%);
+}
+
+.lyra .lyra__control.is-off,
+.lyra[data-open="false"] .lyra__control {
+  display: none;
+}
+
+/* How many comments are still open, on a plaque at the window's corner. */
+.lyra__plaque {
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  min-width: 1.7em;
+  padding: 0 0.4em;
+  border: 2px solid var(--lyra-cream);
+  outline: 2px solid var(--lyra-ink);
+  background-color: var(--lyra-rose);
+  color: var(--lyra-cream-lit);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  /* Pressing the count opens her on what it is counting. */
+  cursor: pointer;
+}
+
+/* Once she is speaking, the message box carries the count and the plaque is in its way. */
+.lyra__plaque.is-empty,
+.lyra[data-open="true"] .lyra__plaque {
+  display: none;
+}
+
+/* Something new she has not been heard on yet. */
+.lyra[data-unread="true"] .lyra__plaque {
+  animation: lyra-blink 1s steps(2) infinite;
+}
+
+/* A review is in flight: the frame's own ticker says so. */
+.lyra__ticker {
+  position: absolute;
+  top: 90.11%;
+  left: 27.68%;
+  display: none;
+  align-items: center;
+  width: 46.11%;
+  height: 5.87%;
+  padding-left: 4%;
+  overflow: hidden;
+  background-color: var(--lyra-navy);
+  color: var(--lyra-cream);
+  font-size: calc(var(--lyra-w) * 0.03);
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.lyra[data-busy="true"] .lyra__ticker {
+  display: flex;
+  animation: lyra-blink 1.2s steps(2) infinite;
+}
+
+/* Paused is a state, not something happening, so it does not blink. */
+.lyra[data-paused="true"] .lyra__ticker {
+  display: flex;
+  color: var(--lyra-gold);
+}
+
+/*
+ * The message box. Hard edges and two-tone bevels, a dithered navy field, and
+ * no rounded corner anywhere.
+ */
+.lyra__box {
+  position: relative;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px 10px 8px;
+  border: 2px solid var(--lyra-cream);
+  outline: 2px solid var(--lyra-ink);
+  background-color: var(--lyra-navy);
+  background-image: repeating-conic-gradient(var(--lyra-navy) 0 25%, var(--lyra-navy-lit) 0 50%);
+  background-size: 4px 4px;
+  box-shadow:
+    inset 0 0 0 2px var(--lyra-ink),
+    5px 5px 0 rgb(0 0 0 / 55%);
+  color: var(--lyra-cream);
+  /* Grows a little with the window, so a large one is not a small note in a big box. */
+  font-size: clamp(12px, calc(var(--lyra-w) * 0.038), 17px);
+  line-height: 1.5;
+}
+
+.lyra[data-open="true"] .lyra__box {
+  display: flex;
+  transform-origin: bottom right;
+  animation: lyra-unfold 140ms steps(4);
+}
+
+.lyra__box-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+  margin-bottom: 2px;
+}
+
+.lyra__box-head[role="button"] {
+  cursor: pointer;
+}
+
+.lyra__box-head .lyra__plate {
+  position: static;
+  top: auto;
+  left: auto;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lyra__box-tools {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.lyra .lyra__box-tools .lyra__box-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--lyra-cream-dim);
+  border-radius: 0;
+  background: var(--lyra-ink);
+  box-shadow: none;
+  color: var(--lyra-cream);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.lyra .lyra__box-tools .lyra__box-tool:hover,
+.lyra .lyra__note-nav:hover:not(:disabled) {
+  background: var(--lyra-navy-lit);
+  color: var(--lyra-gold);
+}
+
+.lyra[data-box-minimized="true"] .lyra__box {
+  gap: 0;
+  padding: 4px 7px;
+}
+
+.lyra[data-box-minimized="true"] .lyra__box > :not(.lyra__box-head) {
+  display: none;
+}
+
+.lyra[data-box-minimized="true"] .lyra__box-head {
+  min-height: 24px;
+  margin: 0;
+}
+
+/* Her name, on a tab of its own at the box's top-left edge. */
+.lyra__plate {
+  position: absolute;
+  top: -13px;
+  left: 10px;
+  padding: 0 8px;
+  border: 2px solid var(--lyra-cream);
+  outline: 2px solid var(--lyra-ink);
+  background-color: var(--lyra-rose);
+  color: var(--lyra-cream-lit);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.lyra__meta {
+  color: var(--lyra-gold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/*
+ * Everything said about one thing: her line, the exchange that followed, and any
+ * example. It grows with what is in it, up to a cap, and scrolls after that.
+ */
+.lyra__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(40vh, 22rem);
+  /*
+   * Never taller than the room above her: the app's height less her frame, the
+   * typing box under it while they talk, and the rest of this box and its gaps.
+   */
+  max-height: min(
+    40vh,
+    22rem,
+    max(5em, calc(100vh - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px))
+  );
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--lyra-cream-dim) transparent;
+}
+
+/* Made taller by the author: all the room there is above her. */
+.lyra[data-tall="true"] .lyra__scroll {
+  max-height: 70vh;
+  max-height: max(
+    5em,
+    calc(100vh - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px)
+  );
+}
+
+/* What she says. When it points at a passage it is a button: clicking it shows the passage. */
+.lyra .lyra__speech {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  flex: 0 0 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  scrollbar-width: thin;
+  scrollbar-color: var(--lyra-cream-dim) transparent;
+}
+
+.lyra button.lyra__speech {
+  cursor: pointer;
+}
+
+.lyra button.lyra__speech:hover {
+  background-color: rgb(159 232 255 / 10%);
+  outline: 1px dashed var(--lyra-cyan);
+}
+
+.lyra__quote {
+  padding-left: 8px;
+  border-left: 2px solid var(--lyra-rose);
+  color: var(--lyra-cyan);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.lyra__quote::before {
+  content: "「";
+  margin-right: 0.35em;
+}
+
+.lyra__quote::after {
+  content: "」";
+  margin-left: 0.35em;
+}
+
+.lyra__say {
+  min-height: 1.5em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The exchange after her line: the author's turns set in, hers set flush. */
+.lyra__turn {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 4px;
+}
+
+.lyra__speaker {
+  color: var(--lyra-gold);
+  font-size: 0.8em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lyra__turn[data-role="user"] {
+  margin-left: 14px;
+  padding-left: 8px;
+  border-left: 2px solid var(--lyra-mauve);
+}
+
+.lyra__turn[data-role="user"] .lyra__speaker {
+  color: var(--lyra-mauve);
+}
+
+.lyra__said {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* One way it could go: boxed off, because it is her wording and not the author's. */
+.lyra__example {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 0 4px;
+  padding: 6px 8px;
+  border: 1px dashed var(--lyra-cyan);
+  background-color: rgb(11 10 36 / 55%);
+}
+
+.lyra__example-label {
+  color: var(--lyra-cyan);
+  font-size: 0.8em;
+  letter-spacing: 0.04em;
+}
+
+.lyra__example-text {
+  align-self: stretch;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.lyra__example-note {
+  color: var(--lyra-mauve);
+  font-size: 0.9em;
+}
+
+/* She is working out an answer. */
+.lyra__waiting {
+  padding: 0 4px;
+  color: var(--lyra-gold);
+  letter-spacing: 0.3em;
+  animation: lyra-blink 0.9s steps(2) infinite;
+}
+
+/* Where the author writes back: the only thing of hers that takes the keyboard. */
+.lyra__discuss {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.lyra .lyra__input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 3.4em;
+  padding: 4px 6px;
+  border: 2px solid var(--lyra-cream-dim);
+  border-radius: 0;
+  background-color: var(--lyra-ink);
+  box-shadow: none;
+  color: var(--lyra-cream-lit);
+  font: inherit;
+  resize: vertical;
+}
+
+.lyra .lyra__input:focus {
+  border-color: var(--lyra-cyan);
+  box-shadow: none;
+  outline: none;
+}
+
+.lyra .lyra__input::placeholder {
+  color: var(--lyra-mauve);
+}
+
+/* The rows of things to do about a line: talk about it, then decide it. */
+.lyra__rows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+
+.lyra__rows .lyra__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Asking is lighter than deciding: an outlined key, not a raised one. */
+.lyra .lyra__actions--talk .lyra__action,
+.lyra .lyra__actions--more .lyra__action {
+  background-color: transparent;
+  box-shadow: 0 0 0 1px var(--lyra-cream-dim);
+  color: var(--lyra-cream);
+}
+
+.lyra .lyra__actions--talk .lyra__action:hover,
+.lyra .lyra__actions--more .lyra__action:hover {
+  background-color: rgb(159 232 255 / 14%);
+  box-shadow: 0 0 0 1px var(--lyra-cyan);
+}
+
+.lyra .lyra__action:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/*
+ * Emphasis in something she said. The pixel fonts have no italic worth the name,
+ * so emphasis is a colour, strong emphasis a brighter one, and code a boxed run.
+ */
+.lyra__box em,
+.lyra__dialog em {
+  color: var(--lyra-cyan);
+  font-style: normal;
+}
+
+.lyra__box strong,
+.lyra__dialog strong {
+  color: var(--lyra-gold);
+  font-weight: inherit;
+}
+
+.lyra__box code {
+  padding: 0 3px;
+  background-color: var(--lyra-ink);
+  color: var(--lyra-cream-lit);
+  font: inherit;
+}
+
+.lyra__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.lyra__count {
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--lyra-mauve);
+  font-size: 11px;
+  text-align: center;
+}
+
+.lyra .lyra__foot .lyra__note-nav {
+  min-width: 24px;
+  min-height: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--lyra-cream-dim);
+  border-radius: 0;
+  background: var(--lyra-ink);
+  box-shadow: none;
+  color: var(--lyra-cream);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.lyra .lyra__foot .lyra__note-nav:disabled {
+  opacity: 0.35;
+}
+
+.lyra__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* A raised key, two tones light and dark, that goes in when pressed. */
+.lyra .lyra__action {
+  height: auto;
+  min-height: 0;
+  padding: 1px 9px;
+  border: none;
+  border-radius: 0;
+  background-color: var(--lyra-cream);
+  box-shadow:
+    inset -2px -2px 0 var(--lyra-cream-dim),
+    inset 2px 2px 0 var(--lyra-cream-lit),
+    0 0 0 2px var(--lyra-ink);
+  color: var(--lyra-ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.lyra .lyra__action:hover {
+  background-color: var(--lyra-gold);
+}
+
+.lyra .lyra__action:active {
+  box-shadow:
+    inset 2px 2px 0 var(--lyra-cream-dim),
+    inset -2px -2px 0 var(--lyra-cream-lit),
+    0 0 0 2px var(--lyra-ink);
+}
+
+/* The mark a visual novel shows when a line has finished. */
+.lyra__more {
+  color: var(--lyra-gold);
+  font-size: 11px;
+  animation: lyra-blink 1s steps(2) infinite;
+}
+
+@keyframes lyra-blink {
+  0% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes lyra-unfold {
+  from {
+    transform: scaleY(0.2);
+    opacity: 0;
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyra *,
+  .lyra-flash {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* In the note itself: what she commented on, in the theme's own colours. */
+.lyra-mark {
+  text-decoration-line: underline;
+  text-decoration-color: var(--text-accent);
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* Severity is thickness, and a compliment is dotted: neither relies on colour alone. */
+.lyra-mark--high {
+  text-decoration-thickness: 3px;
+}
+
+.lyra-mark--strength {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--text-success);
+}
+
+/* A passage lit for a moment when the author asks where a comment points. */
+.lyra-flash {
+  border-radius: 2px;
+  background-color: var(--text-highlight-bg);
+  animation: lyra-flash 2.2s ease-out forwards;
+}
+
+@keyframes lyra-flash {
+  0%,
+  55% {
+    background-color: var(--text-highlight-bg);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+.lyra-settings__focus {
+  width: 100%;
+  min-width: 18rem;
+  resize: vertical;
+}
+
+/* "What was last sent": the text itself, set plainly in the theme's own colours. */
+.lyra-sent__meta {
+  margin-bottom: var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.lyra-sent h4 {
+  margin: var(--size-4-3) 0 var(--size-2-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.lyra-sent__text {
+  max-height: 18em;
+  margin: 0;
+  padding: var(--size-2-3);
+  overflow: auto;
+  border-radius: var(--radius-s);
+  background-color: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/*
+ * Talking with her about the story. A dialogue box over the bottom of her
+ * picture, as a game of the period would have it, and a box to type in under
+ * her window. The message box above the window is left to her comments.
+ */
+.lyra[data-box="false"] .lyra__box {
+  display: none;
+}
+
+.lyra__dialog {
+  position: absolute;
+  /* Inside the frame's opening, clear of its side panel and its bottom bar. */
+  left: 13%;
+  right: 11%;
+  bottom: 15.5%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  padding: 9px 8px 3px;
+  border: 2px solid var(--lyra-cream);
+  outline: 2px solid var(--lyra-ink);
+  background-color: rgb(11 10 36 / 90%);
+  box-shadow: inset 0 0 0 2px var(--lyra-ink);
+  color: var(--lyra-cream-lit);
+  font-size: clamp(11px, calc(var(--lyra-w) * 0.034), 16px);
+  line-height: 1.45;
+  pointer-events: auto;
+  animation: lyra-unfold 140ms steps(4);
+  transform-origin: bottom center;
+  cursor: pointer;
+}
+
+/* Who is speaking, on a tab at the box's top edge. */
+.lyra__dialog-name {
+  position: absolute;
+  top: -11px;
+  left: 8px;
+  padding: 0 7px;
+  border: 2px solid var(--lyra-cream);
+  outline: 2px solid var(--lyra-ink);
+  background-color: var(--lyra-rose);
+  color: var(--lyra-cream-lit);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.lyra__dialog[data-who="author"] .lyra__dialog-name {
+  background-color: var(--lyra-navy-lit);
+  color: var(--lyra-gold);
+}
+
+.lyra__dialog[data-who="author"] .lyra__dialog-text {
+  color: var(--lyra-cream);
+}
+
+/* A long answer scrolls inside the box, so it never covers her face. */
+.lyra__dialog-text {
+  /*
+   * With its edges and the row under it, the box comes to a third of her
+   * picture, which is half the window's width tall; never less than two lines.
+   * Cut to whole lines where the browser can, so none shows half a line. A
+   * click moves on through a longer answer.
+   */
+  --lyra-dialog-room: max(calc(var(--lyra-w) * 0.166 - 34px), 2.9em);
+  max-height: var(--lyra-dialog-room);
+  max-height: round(down, var(--lyra-dialog-room), 1.45em);
+  overflow-y: auto;
+  scrollbar-width: none;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+/* Made taller on request: most of the picture, still clear of the title bar. */
+.lyra__dialog[data-expanded="true"] .lyra__dialog-text {
+  --lyra-dialog-room: calc(var(--lyra-w) * 0.4 - 34px);
+}
+
+.lyra__dialog-text::-webkit-scrollbar {
+  display: none;
+}
+
+.lyra__dialog-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.lyra .lyra__dialog-foot .lyra__action {
+  padding: 0 5px;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--lyra-gold);
+  font-size: 12px;
+}
+
+/* The key that makes the box taller keeps to the left, away from the pages. */
+.lyra .lyra__dialog-foot .lyra__dialog-size {
+  margin-right: auto;
+}
+
+.lyra__dialog-more.is-hidden,
+.lyra__dialog-size.is-hidden {
+  visibility: hidden;
+}
+
+.lyra .lyra__dialog-foot .lyra__action:disabled {
+  opacity: 0.3;
+}
+
+.lyra__talkbox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 10px 8px;
+  border: 2px solid var(--lyra-cream);
+  outline: 2px solid var(--lyra-ink);
+  background-color: var(--lyra-navy);
+  background-image: repeating-conic-gradient(var(--lyra-navy) 0 25%, var(--lyra-navy-lit) 0 50%);
+  background-size: 4px 4px;
+  box-shadow:
+    inset 0 0 0 2px var(--lyra-ink),
+    5px 5px 0 rgb(0 0 0 / 55%);
+  color: var(--lyra-cream);
+  font-size: clamp(12px, calc(var(--lyra-w) * 0.038), 17px);
+  line-height: 1.5;
+}
+
+.lyra__talkhead {
+  overflow: hidden;
+  color: var(--lyra-gold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lyra__talknote {
+  color: var(--lyra-rose);
+  font-size: 12px;
+}
+
+.lyra__talknote:empty {
+  display: none;
+}
+
+.lyra .lyra__talkinput {
+  min-height: 3.2em;
+  resize: none;
+}
+
+.lyra__talkbox .lyra__actions {
+  justify-content: flex-end;
+}

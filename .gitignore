@@ -1,0 +1,24 @@
+# Build output
+main.js
+main.js.map
+
+# Dependencies
+node_modules/
+
+# Local machine configuration
+.vaultpath
+.env
+.env.local
+
+# Obsidian plugin data (may contain API keys), and what she has said
+data.json
+comments.json
+
+# Tooling
+coverage/
+.eslintcache
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db

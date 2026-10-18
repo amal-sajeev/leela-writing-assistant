@@ -1,0 +1,9 @@
+{
+  "id": "lyra-companion",
+  "name": "Lyra",
+  "version": "0.1.0",
+  "minAppVersion": "1.7.2",
+  "description": "A reading companion in the corner of the editor, who speaks up when she has something.",
+  "author": "Amal Sajeev",
+  "isDesktopOnly": false
+}

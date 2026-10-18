@@ -1,0 +1,296 @@
+<!doctype html>
+<!--
+  A static look at her window, outside Obsidian: the same markup the plugin
+  builds and the real stylesheet, over a stand-in for a note. Open it in a browser
+  after changing styles.css. Three states side by side: folded away, speaking,
+  and asking whether to read a selection.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lyra window preview</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <style>
+      :root {
+        --layer-popover: 30;
+        --text-accent: #7c5cff;
+        --text-success: #2f9e44;
+        --text-highlight-bg: rgb(255 208 0 / 40%);
+      }
+      /*
+       * What Obsidian does to every button, roughly. Here so that this page shows
+       * the same fight over button styling that the app does: without it, a rule
+       * of hers that Obsidian's would override looks fine in the preview.
+       */
+      button:not(.clickable-icon) {
+        height: 30px;
+        padding: 4px 12px;
+        border: 0;
+        border-radius: 5px;
+        background-color: #6b6b6b;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 50%);
+        color: #dcddde;
+        font-size: 13px;
+      }
+      button:not(.clickable-icon):hover {
+        background-color: #8a8a8a;
+      }
+      body {
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        padding: 12px;
+        background: #2b2b2b;
+        font-family: Inter, "Segoe UI", sans-serif;
+      }
+      .note {
+        height: 760px;
+        padding: 28px 32px;
+        box-sizing: border-box;
+        overflow: hidden;
+        background: #fdfdfb;
+        color: #222;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .note.dark {
+        background: #1e1e1e;
+        color: #dcddde;
+      }
+      /* Outside Obsidian there is one "editor area" per panel, so she is pinned to it. */
+      .lyra-host {
+        position: relative;
+      }
+      .lyra-host > .lyra {
+        position: absolute;
+      }
+      /* A still picture: the box is shown unfolded, not caught at the start of unfolding. */
+      .lyra .lyra__box,
+      .lyra .lyra__dialog {
+        animation: none !important;
+      }
+      /* Held part-way through, so a still picture can show a change of channel. */
+      .lyra__stage.is-switching .lyra__static,
+      .lyra__stage.is-switching .lyra__scene {
+        animation-play-state: paused !important;
+        animation-delay: -190ms !important;
+      }
+      .note h2 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        color: #888;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="note lyra-host">
+      <h2>Folded away, two comments open</h2>
+      <p>
+        Twelve participants were interviewed, so
+        <span class="lyra-mark">the model is always more accurate</span>. Every deployment since
+        then has confirmed the finding, and <span class="lyra-mark lyra-mark--strength">no
+        exception has been recorded</span>.
+      </p>
+      <div class="lyra" data-open="false" data-unread="false" data-size="normal" data-busy="false" data-crt="true">
+        <div class="lyra__box"></div>
+        <div class="lyra__window">
+          <button class="lyra__stage"><img class="lyra__scene" src="../assets/scenes/sipping.webp" alt="" /><span class="lyra__crt"></span><span class="lyra__static"></span></button>
+          <img class="lyra__frame" src="../assets/frame.webp" alt="" />
+          <button class="lyra__control" style="left:16.48%;top:90.11%;width:3.13%;height:5.87%"></button><button class="lyra__control" style="left:19.75%;top:90.11%;width:3.34%;height:5.87%"></button><button class="lyra__control" style="left:23.23%;top:90.11%;width:3.2%;height:5.87%"></button><button class="lyra__control" style="left:3.4%;top:14.5%;width:4.6%;height:7.1%"></button><button class="lyra__control" style="left:86.93%;top:2.28%;width:3.06%;height:4.57%"></button><button class="lyra__control" style="left:90.33%;top:2.28%;width:3.06%;height:4.57%"></button><button class="lyra__control" style="left:93.74%;top:2.28%;width:3.06%;height:4.57%"></button>
+          <span class="lyra__ticker">Reading…</span>
+          <span class="lyra__plaque">2</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="note dark lyra-host">
+      <h2>A fiction comment, at her usual width</h2>
+      <p>
+        She told herself she was angry. When the station speaker crackled, Mara felt
+        <span class="lyra-mark"><span class="lyra-flash">a sudden surge of grief</span></span> and knew she had
+        never forgiven him.
+      </p>
+      <div class="lyra" data-open="true" data-unread="false" data-busy="false" data-crt="true">
+        <div class="lyra__box">
+          <span class="lyra__plate">Lyra</span>
+          <div class="lyra__meta">feeling · medium</div>
+          <div class="lyra__scroll">
+            <button class="lyra__speech">
+              <div class="lyra__quote">a sudden surge of grief</div>
+              <div class="lyra__say">Mara goes from anger to grief to never having forgiven him in one sentence. A reader has no beat in which to feel the turn with her, so it may read as reported, not lived.</div>
+            </button>
+          </div>
+          <div class="lyra__rows">
+            <div class="lyra__actions lyra__actions--talk">
+              <button class="lyra__action">Why?</button>
+              <button class="lyra__action">Discuss</button>
+              <button class="lyra__action">Example</button>
+            </div>
+            <div class="lyra__actions">
+              <button class="lyra__action">Got it</button>
+              <button class="lyra__action">Not an issue</button>
+              <button class="lyra__action">⋯</button>
+            </div>
+          </div>
+          <div class="lyra__foot">
+            <span class="lyra__count">2/3</span>
+            <span class="lyra__more">▼</span>
+          </div>
+        </div>
+        <div class="lyra__window">
+          <button class="lyra__stage"><img class="lyra__scene" src="../assets/scenes/pondering.webp" alt="" /><span class="lyra__crt"></span><span class="lyra__static"></span></button>
+          <img class="lyra__frame" src="../assets/frame.webp" alt="" />
+          <button class="lyra__control" style="left:16.48%;top:90.11%;width:3.13%;height:5.87%"></button><button class="lyra__control" style="left:19.75%;top:90.11%;width:3.34%;height:5.87%"></button><button class="lyra__control" style="left:23.23%;top:90.11%;width:3.2%;height:5.87%"></button><button class="lyra__control" style="left:3.4%;top:14.5%;width:4.6%;height:7.1%"></button><button class="lyra__control" style="left:86.93%;top:2.28%;width:3.06%;height:4.57%"></button><button class="lyra__control" style="left:90.33%;top:2.28%;width:3.06%;height:4.57%"></button><button class="lyra__control" style="left:93.74%;top:2.28%;width:3.06%;height:4.57%"></button>
+          <span class="lyra__ticker">Reading…</span>
+          <span class="lyra__plaque">2</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="note lyra-host">
+      <h2>The same comment after talking back, at sidebar width, paused</h2>
+      <p>An exchange, an example to copy, and the box for writing back.</p>
+      <div class="lyra" data-open="true" data-unread="false" data-busy="false" data-paused="true" data-crt="true" data-sized="true" style="--lyra-open: 258px">
+        <div class="lyra__box">
+          <span class="lyra__plate">Lyra</span>
+          <div class="lyra__meta">prose · a question</div>
+          <div class="lyra__scroll">
+            <button class="lyra__speech">
+              <div class="lyra__quote">It had stopped at 11:17</div>
+              <div class="lyra__say">Is the exact minute doing work here, or is it colour?</div>
+            </button>
+            <div class="lyra__turn" data-role="user">
+              <span class="lyra__speaker">You</span>
+              <div class="lyra__said">It is the minute his train vanished.</div>
+            </div>
+            <div class="lyra__turn" data-role="reviewer">
+              <span class="lyra__speaker">Lyra</span>
+              <div class="lyra__said">Then it earns its place. I had not been shown that yet.</div>
+            </div>
+            <div class="lyra__example">
+              <div class="lyra__example-label">One way it could go. An option, not a correction.</div>
+              <div class="lyra__example-text">It had stopped at 11:17, the minute she still set her watch by.</div>
+              <div class="lyra__actions">
+                <button class="lyra__action">Copy</button>
+                <button class="lyra__action">Apply</button>
+              </div>
+            </div>
+            <div class="lyra__waiting">…</div>
+          </div>
+          <div class="lyra__discuss">
+            <textarea class="lyra__input" rows="2" placeholder="Answer her, or say why you disagree."></textarea>
+            <div class="lyra__actions">
+              <button class="lyra__action">Send</button>
+              <button class="lyra__action">Cancel</button>
+            </div>
+          </div>
+          <div class="lyra__rows">
+            <div class="lyra__actions lyra__actions--talk">
+              <button class="lyra__action" disabled>Why?</button>
+              <button class="lyra__action" disabled>Discuss</button>
+              <button class="lyra__action" disabled>Example</button>
+            </div>
+            <div class="lyra__actions">
+              <button class="lyra__action">Got it</button>
+              <button class="lyra__action">Not an issue</button>
+              <button class="lyra__action">⋯</button>
+            </div>
+            <div class="lyra__actions lyra__actions--more">
+              <button class="lyra__action">Read the scene</button>
+              <button class="lyra__action">Stop mentioning prose</button>
+            </div>
+          </div>
+          <div class="lyra__foot">
+            <span class="lyra__count">3/3</span>
+            <span class="lyra__more">▼</span>
+          </div>
+        </div>
+        <div class="lyra__window">
+          <button class="lyra__stage"><img class="lyra__scene" src="../assets/scenes/typing.webp" alt="" /><span class="lyra__crt"></span><span class="lyra__static"></span></button>
+          <img class="lyra__frame" src="../assets/frame.webp" alt="" />
+          <button class="lyra__control" style="left:16.48%;top:90.11%;width:3.13%;height:5.87%"></button><button class="lyra__control" style="left:19.75%;top:90.11%;width:3.34%;height:5.87%"></button><button class="lyra__control" style="left:23.23%;top:90.11%;width:3.2%;height:5.87%"></button><button class="lyra__control" style="left:3.4%;top:14.5%;width:4.6%;height:7.1%"></button><button class="lyra__control" style="left:86.93%;top:2.28%;width:3.06%;height:4.57%"></button><button class="lyra__control" style="left:90.33%;top:2.28%;width:3.06%;height:4.57%"></button><button class="lyra__control" style="left:93.74%;top:2.28%;width:3.06%;height:4.57%"></button>
+          <span class="lyra__ticker">Paused</span>
+          <span class="lyra__plaque">2</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="note dark lyra-host" style="min-height: 720px">
+      <h2>Talking with her, at a wide window</h2>
+      <p>A comment above her window, the conversation on her picture, and the box to type in below.</p>
+      <div class="lyra" data-open="true" data-box="true" data-talking="true" data-unread="false" data-busy="false" data-crt="true" data-sized="true" style="--lyra-open: 400px">
+        <div class="lyra__box">
+          <span class="lyra__plate">Lyra</span>
+          <div class="lyra__meta">pacing · craft</div>
+          <div class="lyra__scroll">
+            <button class="lyra__speech">
+              <div class="lyra__quote">a sudden surge of grief</div>
+              <div class="lyra__say">Hm. Anger, grief and a grudge, all in one sentence. You didn't leave me a beat to feel any of it.</div>
+            </button>
+          </div>
+          <div class="lyra__rows">
+            <div class="lyra__actions"><button class="lyra__action">Got it</button><button class="lyra__action">Not an issue</button></div>
+          </div>
+          <div class="lyra__foot"><span class="lyra__count">2/3</span><span class="lyra__more">▼</span></div>
+        </div>
+        <div class="lyra__window">
+          <button class="lyra__stage"><img class="lyra__scene" src="../assets/scenes/listening.webp" alt="" /><span class="lyra__crt"></span><span class="lyra__static"></span></button>
+          <img class="lyra__frame" src="../assets/frame.webp" alt="" />
+          <button class="lyra__control" style="left:3.4%;top:14.5%;width:4.6%;height:7.1%"></button><button class="lyra__control" style="left:3.4%;top:40%;width:4.6%;height:7.1%"></button>
+          <span class="lyra__plaque">2</span>
+          <div class="lyra__dialog" data-who="lyra">
+            <span class="lyra__dialog-name">Lyra</span>
+            <div class="lyra__dialog-text">The brother's fine. It's the photograph that gives him away. You show it in chapter two, then again in four, and by the time Mara finds it under the tile I've been waiting for her to catch up for thirty pages. Cut the second showing and let her find it cold. If you want me nervous about him, give him one line that doesn't fit and never explain it. Chapter six already has the place for it, when he hands her the ticket and says nothing about where it goes.</div>
+            <div class="lyra__dialog-foot"><button class="lyra__action lyra__dialog-size">▲</button><button class="lyra__action">◀</button><span class="lyra__count">8/8</span><button class="lyra__action" disabled>▶</button><span class="lyra__more lyra__dialog-more">▼</span></div>
+          </div>
+        </div>
+        <div class="lyra__talkbox">
+          <div class="lyra__talkhead">Talking · The Quiet Station</div>
+          <div class="lyra__talknote"></div>
+          <textarea class="lyra__input lyra__talkinput" rows="2" placeholder="Say something to her. Enter sends, Esc puts this away."></textarea>
+          <div class="lyra__actions"><button class="lyra__action">Send</button><button class="lyra__action">Forget</button><button class="lyra__action">Close</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note dark lyra-host" style="min-height: 720px">
+      <h2>Talking with her, at sidebar width</h2>
+      <p>A comment above her window, the conversation on her picture, and the box to type in below.</p>
+      <div class="lyra" data-open="true" data-box="true" data-talking="true" data-unread="false" data-busy="false" data-crt="true" data-sized="true" style="--lyra-open: 300px">
+        <div class="lyra__box">
+          <span class="lyra__plate">Lyra</span>
+          <div class="lyra__meta">pacing · craft</div>
+          <div class="lyra__scroll">
+            <button class="lyra__speech">
+              <div class="lyra__quote">a sudden surge of grief</div>
+              <div class="lyra__say">Hm. Anger, grief and a grudge, all in one sentence. You didn't leave me a beat to feel any of it.</div>
+            </button>
+          </div>
+          <div class="lyra__rows">
+            <div class="lyra__actions"><button class="lyra__action">Got it</button><button class="lyra__action">Not an issue</button></div>
+          </div>
+          <div class="lyra__foot"><span class="lyra__count">2/3</span><span class="lyra__more">▼</span></div>
+        </div>
+        <div class="lyra__window">
+          <button class="lyra__stage"><img class="lyra__scene" src="../assets/scenes/listening.webp" alt="" /><span class="lyra__crt"></span><span class="lyra__static"></span></button>
+          <img class="lyra__frame" src="../assets/frame.webp" alt="" />
+          <button class="lyra__control" style="left:3.4%;top:14.5%;width:4.6%;height:7.1%"></button><button class="lyra__control" style="left:3.4%;top:40%;width:4.6%;height:7.1%"></button>
+          <span class="lyra__plaque">2</span>
+          <div class="lyra__dialog" data-who="author" data-expanded="true">
+            <span class="lyra__dialog-name">You</span>
+            <div class="lyra__dialog-text">The brother's fine. It's the photograph that gives him away. You show it in chapter two, then again in four, and by the time Mara finds it under the tile I've been waiting for her to catch up for thirty pages. Cut the second showing and let her find it cold. If you want me nervous about him, give him one line that doesn't fit and never explain it. Chapter six already has the place for it, when he hands her the ticket and says nothing about where it goes.</div>
+            <div class="lyra__dialog-foot"><button class="lyra__action lyra__dialog-size">▲</button><button class="lyra__action">◀</button><span class="lyra__count">7/8</span><button class="lyra__action" disabled>▶</button><span class="lyra__more lyra__dialog-more">▼</span></div>
+          </div>
+        </div>
+        <div class="lyra__talkbox">
+          <div class="lyra__talkhead">Talking · The Quiet Station</div>
+          <div class="lyra__talknote"></div>
+          <textarea class="lyra__input lyra__talkinput" rows="2" placeholder="Say something to her. Enter sends, Esc puts this away."></textarea>
+          <div class="lyra__actions"><button class="lyra__action">Send</button><button class="lyra__action">Forget</button><button class="lyra__action">Close</button></div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
