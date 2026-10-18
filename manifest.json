@@ -3,7 +3,7 @@
   "name": "Lyra Writing Companion",
   "version": "0.1.0",
   "minAppVersion": "1.7.2",
-  "description": "Get AI feedback on your writing, discuss your story, and keep notes on your novel.",
+  "description": "Get story-aware AI feedback on your writing, right inside Obsidian.",
   "author": "Amal Sajeev",
   "isDesktopOnly": false
 }

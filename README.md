@@ -1,11 +1,10 @@
 # Lyra
 
-A reading companion for Obsidian. She sits in a small PC-98 style window at the
-bottom of the right sidebar, off the page you are writing on, gets on with her evening while you write, and
-speaks up when she has something to say about what you wrote.
+Your story's sharpest reader, right inside Obsidian.
 
-This is the light sibling of AI Reviewer: one reviewer, one window, one short
-settings page. No side panel, no whole-note pass, no export.
+Lyra catches craft and continuity snags, talks through your story, and leaves
+every edit in your hands. Pick a passage, ask why, or let her read along as you
+write.
 
 ## What she does
 
