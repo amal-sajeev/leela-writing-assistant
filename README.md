@@ -193,8 +193,8 @@ you are in.
 ## Setting up
 
 1. `npm install`, then `npm run build`. The build copies the plugin into the vault
-   named in `.vaultpath` (or `OBSIDIAN_VAULT_PATH`), including the `assets` folder
-   her window is drawn from.
+   named in `.vaultpath` (or `OBSIDIAN_VAULT_PATH`). Its artwork is bundled into
+   `main.js`.
 2. In Obsidian: Settings → Community plugins → enable **Lyra**.
 3. Settings → Lyra: choose a provider (Mistral, OpenAI or Anthropic), paste its
    API key, and press **Test**.
@@ -252,8 +252,9 @@ first time the plugin loads. On older versions they stay in the data file.
 
 ## Her window
 
-The art lives in `assets`: `frame.webp` is the window frame, with a transparent
-opening for the scene. The former green-haired scene set has been removed.
+The art lives in `assets` and is bundled into `main.js`: `frame.webp` is the
+window frame, with a transparent opening for the scene. The former green-haired
+scene set has been removed.
 
 `src/companion/scene-assets.ts` groups scenes into active and passive sets. She
 uses the supplied original-design illustrations in `assets/idle` during chat,

@@ -16,6 +16,7 @@ import { withoutDashes } from "./utils/text";
 import { resolveAnchor } from "./comments/anchor-resolver";
 import { applyResolution, withStatus } from "./comments/comment-state";
 import type { CompanionLine } from "./companion/lines";
+import { EMBEDDED_ASSETS } from "./companion/embedded-assets";
 import {
   BRIEF_FILE_NAME,
   COMMENTS_FILE_NAME,
@@ -1228,14 +1229,9 @@ export default class LyraPlugin extends Plugin {
     this.register(() => observer.disconnect());
   }
 
-  /** Where a file under the plugin's `assets` folder can be loaded from. */
+  /** Embedded image data for a scene asset. */
   private assetUrl(relativePath: string): string | null {
-    const adapter = this.app.vault.adapter as {
-      getResourcePath?: (path: string) => string;
-    };
-    if (typeof adapter.getResourcePath !== "function") return null;
-
-    return adapter.getResourcePath(normalizePath(`${this.pluginDirectory()}/assets/${relativePath}`));
+    return EMBEDDED_ASSETS[relativePath] ?? null;
   }
 }
 

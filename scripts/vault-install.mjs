@@ -1,4 +1,4 @@
-import { access, copyFile, cp, mkdir, readFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN_ID = "lyra-companion";
 const ARTIFACTS = ["main.js", "manifest.json", "styles.css"];
-const ASSETS = "assets";
 
 /**
  * Resolves the plugin directory to copy build artifacts into.
@@ -71,13 +70,6 @@ export async function installBuild({ quiet = false } = {}) {
       continue;
     }
     await copyFile(source, path.join(pluginDir, artifact));
-  }
-
-  // Her scenes and the window frame, which the plugin loads from beside itself.
-  try {
-    await cp(path.join(repoRoot, ASSETS), path.join(pluginDir, ASSETS), { recursive: true });
-  } catch {
-    if (!quiet) console.warn(`[lyra] skipped missing folder ${ASSETS}`);
   }
 
   return pluginDir;

@@ -567,7 +567,7 @@ describe("her window", () => {
     expect(isOpen()).toBe(false);
     expect(root().find("lyra__plaque")?.text).toBe("1");
     expect(root().find("lyra__frame")?.getAttribute("src")).toBe("app://lyra/frame.webp");
-    expect(root().find("lyra__scene")?.getAttribute("src")).toMatch(/^app:\/\/lyra\/(?:idle|in_progress)\/[\w-]+\.png$/);
+    expect(root().find("lyra__scene")?.getAttribute("src")).toMatch(/^app:\/\/lyra\/(?:idle|in_progress)\/[\w-]+\.webp$/);
   });
 
   // She floats above the whole app, so where the editor's corner is has to be told
@@ -751,7 +751,7 @@ describe("her window", () => {
     expect(picture()).toBe(before);
 
     vi.advanceTimersByTime(150);
-    expect(picture()).toMatch(/^app:\/\/lyra\/in_progress\/in_progress_[1-5]\.png$/);
+    expect(picture()).toMatch(/^app:\/\/lyra\/in_progress\/in_progress_[1-5]\.webp$/);
     expect(stage.classes.has("is-switching")).toBe(true);
 
     vi.advanceTimersByTime(400);
@@ -761,7 +761,7 @@ describe("her window", () => {
     settings.companion.crt = false;
     companion.setActivity("idle");
     expect(stage.classes.has("is-switching")).toBe(false);
-    expect(picture()).not.toMatch(/^app:\/\/lyra\/in_progress\/in_progress_[1-5]\.png$/);
+    expect(picture()).not.toMatch(/^app:\/\/lyra\/in_progress\/in_progress_[1-5]\.webp$/);
   });
 
   it("shows the passage when her words are clicked, or the frame's play button", () => {

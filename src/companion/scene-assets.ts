@@ -17,25 +17,25 @@ export interface LyraSceneAsset {
 }
 
 const ASSETS = {
-  idle_happy_resting: { id: "idle_happy_resting", asset: "idle/idle_happy_resting.png" },
-  idle_happy: { id: "idle_happy", asset: "idle/idle_happy.png" },
-  idle_concerned: { id: "idle_concerned", asset: "idle/idle_concerned.png" },
-  idle_embarassed: { id: "idle_embarassed", asset: "idle/idle_embarassed.png" },
-  idle_goodbye: { id: "idle_goodbye", asset: "idle/idle_goodbye.png" },
-  idle_laughing: { id: "idle_laughing", asset: "idle/idle_laughing.png" },
-  idle_sad: { id: "idle_sad", asset: "idle/idle_sad.png" },
-  idle_serious: { id: "idle_serious", asset: "idle/idle_serious.png" },
-  idle_shocked_happy: { id: "idle_shocked_happy", asset: "idle/idle_shocked_happy.png" },
-  idle_shocked_sad: { id: "idle_shocked_sad", asset: "idle/idle_shocked_sad.png" },
-  idle_sulking: { id: "idle_sulking", asset: "idle/idle_sulking.png" },
-  idle_teasing: { id: "idle_teasing", asset: "idle/idle_teasing.png" },
-  idle_welcome: { id: "idle_welcome", asset: "idle/idle_welcome.png" },
-  passive_listening_to_music: { id: "passive_listening_to_music", asset: "idle/passive_listening_to_music.png" },
+  idle_happy_resting: { id: "idle_happy_resting", asset: "idle/idle_happy_resting.webp" },
+  idle_happy: { id: "idle_happy", asset: "idle/idle_happy.webp" },
+  idle_concerned: { id: "idle_concerned", asset: "idle/idle_concerned.webp" },
+  idle_embarassed: { id: "idle_embarassed", asset: "idle/idle_embarassed.webp" },
+  idle_goodbye: { id: "idle_goodbye", asset: "idle/idle_goodbye.webp" },
+  idle_laughing: { id: "idle_laughing", asset: "idle/idle_laughing.webp" },
+  idle_sad: { id: "idle_sad", asset: "idle/idle_sad.webp" },
+  idle_serious: { id: "idle_serious", asset: "idle/idle_serious.webp" },
+  idle_shocked_happy: { id: "idle_shocked_happy", asset: "idle/idle_shocked_happy.webp" },
+  idle_shocked_sad: { id: "idle_shocked_sad", asset: "idle/idle_shocked_sad.webp" },
+  idle_sulking: { id: "idle_sulking", asset: "idle/idle_sulking.webp" },
+  idle_teasing: { id: "idle_teasing", asset: "idle/idle_teasing.webp" },
+  idle_welcome: { id: "idle_welcome", asset: "idle/idle_welcome.webp" },
+  passive_listening_to_music: { id: "passive_listening_to_music", asset: "idle/passive_listening_to_music.webp" },
 } as const satisfies Record<string, LyraSceneAsset>;
 
 const IN_PROGRESS_SCENES: readonly LyraSceneAsset[] = [1, 2, 3, 4, 5].map((number) => ({
   id: `in_progress_${number}`,
-  asset: `in_progress/in_progress_${number}.png`,
+  asset: `in_progress/in_progress_${number}.webp`,
 }));
 
 const PASSIVE_ACTIVITY_SCENES: readonly LyraSceneAsset[] = [
@@ -49,7 +49,7 @@ const PASSIVE_ACTIVITY_SCENES: readonly LyraSceneAsset[] = [
   "passive_reading_on_bed",
   "passive_sleeping_on_desk",
   "passive_sorting_cds",
-].map((id) => ({ id, asset: `idle/${id}.png` }));
+].map((id) => ({ id, asset: `idle/${id}.webp` }));
 
 export type LyraSceneAssetId = keyof typeof ASSETS;
 
