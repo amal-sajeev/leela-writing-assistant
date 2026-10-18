@@ -1,7 +1,7 @@
 {
   "name": "lyra-companion",
   "version": "0.1.0",
-  "description": "A reading companion in the corner of the Obsidian editor, who speaks up when she has something.",
+  "description": "Get AI feedback on your writing, discuss your story, and keep notes on your novel.",
   "private": true,
   "main": "main.js",
   "scripts": {

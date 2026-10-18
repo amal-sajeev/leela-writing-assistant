@@ -229,6 +229,10 @@ A note with `lyra: false` in its frontmatter is left alone.
 
 ## What is sent, and what is kept
 
+Lyra uses network access to send review and chat text to the AI provider you
+choose (Mistral, OpenAI or Anthropic) and receive its response. Novel notes are
+sent when the automatic novel-notes feature is enabled.
+
 A review sends the passage, a few thousand characters either side of it, the
 comments she has already made nearby, your story brief with its canon notes if
 there is one, and the relevant part of her notes on the novel, to the provider
