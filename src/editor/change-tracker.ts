@@ -15,7 +15,7 @@ import { editorFilePath } from "./editor-file";
 export interface ChangeTrackerOptions {
   onChange(report: EditorChangeReport): void;
   onCursor?(report: CursorReport): void;
-  now?(): number;
+  now?: () => number;
 }
 
 export function changeTracker(options: ChangeTrackerOptions): Extension {

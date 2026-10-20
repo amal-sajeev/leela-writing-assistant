@@ -1,6 +1,6 @@
 {
   "name": "lyra-companion",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Story-aware AI reviews, continuity checks, and in-character chat for writers.",
   "author": "Amal Sajeev <amsajeev333@gmail.com>",
   "private": true,

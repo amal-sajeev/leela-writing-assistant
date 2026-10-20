@@ -258,9 +258,11 @@ function listIn(raw: string): unknown[] | null {
 
     try {
       const parsed: unknown = JSON.parse(text.slice(from, to + 1));
-      if (Array.isArray(parsed)) return parsed;
+      const parsedArray = unknownArray(parsed);
+      if (parsedArray !== null) return parsedArray;
       const lines = isRecord(parsed) ? parsed.lines : undefined;
-      if (Array.isArray(lines)) return lines;
+      const lineArray = unknownArray(lines);
+      if (lineArray !== null) return lineArray;
     } catch {
       // Not that shape. The next one, or plain talk.
     }
@@ -271,6 +273,13 @@ function listIn(raw: string): unknown[] | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function unknownArray(value: unknown): unknown[] | null {
+  if (!Array.isArray(value)) return null;
+  const result: unknown[] = [];
+  for (const item of value) result.push(item);
+  return result;
 }
 
 function isTalkMood(value: unknown): value is TalkMood {

@@ -60,9 +60,7 @@ export class LyraSettingTab extends PluginSettingTab {
         render: (setting) => {
           this.saveTypedNow();
           setting.settingEl.addClass("lyra-settings-definition");
-          setting.settingEl.style.display = "block";
-          setting.controlEl.style.display = "block";
-          setting.controlEl.style.width = "100%";
+          setting.controlEl.addClass("lyra-settings-definition__control");
           const root = setting.controlEl.createDiv({ cls: "lyra-settings-content" });
           this.renderAll(root);
           return () => this.saveTypedNow();
@@ -88,7 +86,7 @@ export class LyraSettingTab extends PluginSettingTab {
 
   private refreshSettings(): void {
     if (requireApiVersion("1.13.0")) this.update();
-    else this.display();
+    else this.renderAll(this.containerEl);
   }
 
   private renderProvider(containerEl: HTMLElement): void {

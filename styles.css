@@ -388,6 +388,15 @@
   background-color: var(--lyra-navy);
 }
 
+.lyra-settings-definition {
+  display: block;
+}
+
+.lyra-settings-definition__control {
+  display: block;
+  width: 100%;
+}
+
 /*
  * The buttons painted into the frame, made to work: invisible areas over the
  * artwork, placed by percentage so they follow the window at any size.
