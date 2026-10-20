@@ -14,7 +14,7 @@ export interface InlineRun {
  * `*` used as a bullet or a multiplication sign is left as it is.
  */
 const INLINE =
-  /\*\*(?=\S)([^*]+?)(?<=\S)\*\*|(?<![\w_])__(?=\S)([^_]+?)(?<=\S)__(?![\w_])|\*(?=\S)([^*]+?)(?<=\S)\*|(?<![\w_])_(?=\S)([^_]+?)(?<=\S)_(?![\w_])|`([^`\n]+)`/g;
+  /\*\*(?=\S)([^*]*?\S)\*\*|(^|[^\w_])__(?=\S)([^_]*?\S)__(?![\w_])|\*(?=\S)([^*]*?\S)\*|(^|[^\w_])_(?=\S)([^_]*?\S)_(?![\w_])|`([^`\n]+)`/g;
 
 export function parseInline(source: string): InlineRun[] {
   const text = tidy(source);
@@ -23,9 +23,10 @@ export function parseInline(source: string): InlineRun[] {
 
   for (const match of text.matchAll(INLINE)) {
     const at = match.index;
-    if (at > from) runs.push({ text: text.slice(from, at), style: "plain" });
+    const [whole, strongStar, strongUnderPrefix, strongUnder, emStar, emUnderPrefix, emUnder, code] = match;
+    const markerAt = at + (strongUnderPrefix ?? emUnderPrefix ?? "").length;
+    if (markerAt > from) runs.push({ text: text.slice(from, markerAt), style: "plain" });
 
-    const [whole, strongStar, strongUnder, emStar, emUnder, code] = match;
     if (strongStar !== undefined || strongUnder !== undefined) {
       runs.push({ text: strongStar ?? strongUnder!, style: "strong" });
     } else if (emStar !== undefined || emUnder !== undefined) {
