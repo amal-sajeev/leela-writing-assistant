@@ -13,8 +13,8 @@ import {
   observationTokenBudget,
   REPLY_TOKEN_BUDGET,
   reviewTokenBudget,
-  THINKING_HEADROOM_TOKENS,
 } from "./budgets";
+import { outputTokenBudget } from "./provider-capabilities";
 import { rotationSkipRetry, withApiKeyFallback } from "./key-fallback";
 import { sendJson, type HttpTransport } from "./http";
 import { ProviderError } from "./provider-errors";
@@ -100,16 +100,16 @@ export class AnthropicProvider implements AIProvider {
 
   async replyToComment(input: CommentReplyInput, signal?: AbortSignal): Promise<string> {
     return this.withKeys(async (config) => {
-      const { data } = await sendJson<AnthropicMessageResponse>(
+      const { data, requestId } = await sendJson<AnthropicMessageResponse>(
         this.messageRequest(config, {
           system: input.systemPrompt,
           messages: [{ role: "user", content: input.userPrompt }],
-          max_tokens: withHeadroom(input.maxTokens ?? REPLY_TOKEN_BUDGET),
+          max_tokens: outputTokenBudget("anthropic", config.model, input.maxTokens ?? REPLY_TOKEN_BUDGET),
         }),
         this.sendOptions(config, signal),
       );
 
-      const text = assistantText(data).trim();
+      const text = assistantText(data, requestId).trim();
       if (text.length === 0) {
         throw new ProviderError("invalid_response", "Provider returned an empty reply", false);
       }
@@ -120,17 +120,17 @@ export class AnthropicProvider implements AIProvider {
   async generateFix(input: FixRequestInput, signal?: AbortSignal): Promise<SuggestedFix> {
     return this.withKeys((config) =>
       withSchemaFallback(async (mode) => {
-        const { data } = await sendJson<AnthropicMessageResponse>(
+        const { data, requestId } = await sendJson<AnthropicMessageResponse>(
           this.messageRequest(config, {
             system: input.systemPrompt,
             messages: [{ role: "user", content: input.userPrompt }],
-            max_tokens: withHeadroom(FIX_TOKEN_BUDGET),
+            max_tokens: outputTokenBudget("anthropic", config.model, FIX_TOKEN_BUDGET),
             ...outputConfig(mode, suggestedFixJsonSchema()),
           }),
           this.sendOptions(config, signal),
         );
 
-        return { ...parseSuggestedFix(assistantText(data)), generatedAt: Date.now() };
+        return { ...parseSuggestedFix(assistantText(data, requestId)), generatedAt: Date.now() };
       }, this.fallbackOptions(config)),
     );
   }
@@ -154,14 +154,19 @@ export class AnthropicProvider implements AIProvider {
       this.messageRequest(config, {
         system: input.systemPrompt,
         messages: [{ role: "user", content: input.userPrompt }],
-        max_tokens: withHeadroom(reviewTokenBudget(input.maxComments)),
+        max_tokens: outputTokenBudget("anthropic", config.model, reviewTokenBudget(input.maxComments)),
         ...outputConfig(mode, reviewJsonSchema()),
       }),
       this.sendOptions(config, signal),
     );
 
-    const comments = parseReviewComments(assistantText(data));
+    const comments = parseReviewComments(assistantText(data, requestId));
     const usage = extractUsage(data.usage);
+    const stopReason = data.stop_reason;
+    const completion = {
+      requestId,
+      ...(typeof stopReason === "string" ? { stopReason } : {}),
+    };
 
     this.deps.logger?.debug("review parsed", {
       requestId,
@@ -171,7 +176,7 @@ export class AnthropicProvider implements AIProvider {
       outputTokens: usage?.outputTokens,
     });
 
-    return usage === undefined ? { comments } : { comments, usage };
+    return { comments, completion, ...(usage === undefined ? {} : { usage }) };
   }
 
   private async requestObservations(
@@ -184,14 +189,19 @@ export class AnthropicProvider implements AIProvider {
       this.messageRequest(config, {
         system: input.systemPrompt,
         messages: [{ role: "user", content: input.userPrompt }],
-        max_tokens: withHeadroom(observationTokenBudget(input.maxObservations)),
+        max_tokens: outputTokenBudget("anthropic", config.model, observationTokenBudget(input.maxObservations)),
         ...outputConfig(mode, documentObservationsJsonSchema()),
       }),
       this.sendOptions(config, signal),
     );
 
-    const observations = parseObservations(assistantText(data));
+    const observations = parseObservations(assistantText(data, requestId));
     const usage = extractUsage(data.usage);
+    const stopReason = data.stop_reason;
+    const completion = {
+      requestId,
+      ...(typeof stopReason === "string" ? { stopReason } : {}),
+    };
 
     this.deps.logger?.debug("observations parsed", {
       requestId,
@@ -201,7 +211,7 @@ export class AnthropicProvider implements AIProvider {
       outputTokens: usage?.outputTokens,
     });
 
-    return usage === undefined ? { observations } : { observations, usage };
+    return { observations, completion, ...(usage === undefined ? {} : { usage }) };
   }
 
   private messageRequest(config: ProviderRequestConfig, body: Record<string, unknown>) {
@@ -273,21 +283,20 @@ function baseUrl(config: ProviderRequestConfig): string {
   return base.replace(/\/+$/, "");
 }
 
-function withHeadroom(budget: number): number {
-  return budget + THINKING_HEADROOM_TOKENS;
-}
-
 /**
  * The reply text, once the response is known to be a whole one. A reply cut off
  * at the token limit or declined outright is said to be that, rather than left
  * to fail later as JSON that would not parse.
  */
-function assistantText(data: AnthropicMessageResponse): string {
+function assistantText(data: AnthropicMessageResponse, requestId?: string): string {
   if (data.stop_reason === "refusal") {
     throw new ProviderError("provider_error", "The model declined this request", false);
   }
   if (data.stop_reason === "max_tokens") {
-    throw new ProviderError("invalid_response", "The reply was cut off at the token limit", false);
+    throw new ProviderError("output_truncated", "The reply was cut off at the token limit", false, undefined, undefined, {
+      stopReason: "max_tokens",
+      ...(requestId === undefined ? {} : { requestId }),
+    });
   }
 
   return extractMessageText(data.content);

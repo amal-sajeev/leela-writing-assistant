@@ -129,7 +129,7 @@ describe("relaxNullableUnions", () => {
 
     expect(dig(items, "properties.rationale")).toEqual({ type: "string" });
     expect(dig(items, "properties.reaction")).toEqual({ type: "string", enum: [
-      "idle_concerned", "idle_goodbye", "idle_laughing", "idle_serious", "idle_shocked_happy", "idle_shocked_sad", "idle_welcome",
+      "idle_embarassed", "idle_goodbye", "idle_happy", "idle_happy_resting", "idle_concerned", "idle_laughing", "idle_sad", "idle_serious", "idle_shocked_happy", "idle_shocked_sad", "idle_sulking", "idle_teasing", "idle_welcome",
     ] });
     expect(dig(items, "required")).toEqual([
       "quote",

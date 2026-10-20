@@ -23,6 +23,7 @@ import { createId } from "../utils/ids";
 import { keepHead } from "../utils/text";
 import { segmentsOf, type TalkHost, type TalkMessage, type TalkMood, type TalkScope } from "../talk/talk";
 import { parseInline, plainText } from "./inline";
+import { parseReviewerReply } from "../review/reply";
 
 /** Renders Lyra's scene and note box. It preserves editor focus and keeps comment history. */
 
@@ -40,12 +41,16 @@ export interface CompanionDeps {
    * app and is lined up with the editor by these numbers, because Obsidian's own
    * layout rules decide the position of anything placed inside the editor area.
    */
-  corner(): { right: number; bottom: number; width: number } | null;
+  corner(): { right: number; bottom: number; top?: number; width: number } | null;
   getSettings(): LyraSettings;
   activePath(): string | null;
   getComments(filePath: string): readonly ReviewComment[];
   /** A loadable address for a file under the plugin's `assets` folder. */
   assetUrl(relativePath: string): string | null;
+  /** Embedded fallback used if an installed artwork file is missing. */
+  fallbackAssetUrl?(relativePath: string): string | null;
+  /** Renders stored Markdown in a note reply. */
+  renderMarkdown?(markdown: string, container: HTMLElement): void;
   /** Scrolls to and briefly lights up what a line is about. */
   showPassage(filePath: string, line: CompanionLine): void;
   setStatus(filePath: string, commentId: string, status: "open" | "resolved" | "dismissed"): void;
@@ -218,6 +223,12 @@ export class Companion {
   private talkInput: HTMLTextAreaElement | null = null;
   private talkSend: HTMLButtonElement | null = null;
   private talkClear: HTMLButtonElement | null = null;
+  private talkMemoryPanel: HTMLElement | null = null;
+  private talkMemoryInput: HTMLTextAreaElement | null = null;
+  private talkMemorySave: HTMLButtonElement | null = null;
+  private talkMemoryClear: HTMLButtonElement | null = null;
+  private talkMemoryOpen = false;
+  private talkMemoryClearArmed = false;
 
   /** The line on show, by id, so it survives the list changing underneath it. */
   private currentId: string | null = null;
@@ -252,7 +263,6 @@ export class Companion {
   private readonly inProgressSceneRotation = new SceneRotation();
   private passiveSceneSlot: number | null = null;
   private selectedPassiveScene: ReturnType<SceneRotation["next"]> | null = null;
-  private activeSceneSlot: number | null = null;
   private activeSceneContext: string | null = null;
   private selectedActiveScene: ReturnType<SceneRotation["next"]> | null = null;
   private inProgressSceneSlot: number | null = null;
@@ -322,6 +332,7 @@ export class Companion {
 
     style.setProperty("--lyra-right", `${Math.max(0, Math.round(corner.right))}px`);
     style.setProperty("--lyra-bottom", `${Math.max(0, Math.round(corner.bottom))}px`);
+    style.setProperty("--lyra-top", `${Math.max(0, Math.round(corner.top ?? 0))}px`);
     style.setProperty("--lyra-room", `${Math.max(0, Math.round(corner.width))}px`);
     // The furthest she may reach to the left: the edge of the app window.
     style.setProperty("--lyra-reach", `${Math.max(0, Math.round(corner.right + corner.width))}px`);
@@ -696,7 +707,17 @@ export class Companion {
 
     this.scene = stage.createEl("img", { cls: "lyra__scene" });
     this.scene.alt = "";
-    this.scene.addEventListener("error", () => this.scene?.addClass("is-missing"));
+    this.scene.addEventListener("error", () => {
+      const scene = this.scene;
+      if (scene === null) return;
+      const fallback = this.deps.fallbackAssetUrl?.("idle/idle_serious.webp");
+      if (fallback !== null && fallback !== undefined && scene.dataset.fallback !== "used") {
+        scene.dataset.fallback = "used";
+        scene.setAttribute("src", fallback);
+      } else {
+        scene.addClass("is-missing");
+      }
+    });
 
     // Over the picture: the tube's scanlines and grain, and the static that
     // covers a change of scene.
@@ -708,7 +729,15 @@ export class Companion {
     const frameUrl = this.deps.assetUrl("frame.webp");
     if (frameUrl === null) border.addClass("is-missing");
     else border.setAttribute("src", frameUrl);
-    border.addEventListener("error", () => border.addClass("is-missing"));
+    border.addEventListener("error", () => {
+      const fallback = this.deps.fallbackAssetUrl?.("frame.webp");
+      if (fallback !== null && fallback !== undefined && border.dataset.fallback !== "used") {
+        border.dataset.fallback = "used";
+        border.setAttribute("src", fallback);
+      } else {
+        border.addClass("is-missing");
+      }
+    });
 
     this.controls.clear();
     for (const control of FRAME_CONTROLS) {
@@ -969,6 +998,8 @@ export class Companion {
 
     this.talking = true;
     this.talkProblem = null;
+    this.talkMemoryOpen = false;
+    this.talkMemoryClearArmed = false;
     this.clearArmed = false;
     this.clearHide();
     this.loadTalk();
@@ -1019,6 +1050,10 @@ export class Companion {
       this.talkInput = null;
       this.talkSend = null;
       this.talkClear = null;
+      this.talkMemoryPanel = null;
+      this.talkMemoryInput = null;
+      this.talkMemorySave = null;
+      this.talkMemoryClear = null;
       return;
     }
 
@@ -1067,7 +1102,35 @@ export class Companion {
       this.talkSend = this.action(actions, "Send", () => this.sendTalk());
       this.talkClear = this.action(actions, "Forget", () => this.forgetTalk());
       this.talkClear.setAttribute("aria-label", "Forget this conversation");
+      this.action(actions, "Memory", () => this.toggleTalkMemory());
       this.action(actions, "Close", () => this.leaveTalk());
+
+      const memory = box.createDiv({ cls: "lyra__talkmemory" });
+      memory.hidden = true;
+      memory.createDiv({ cls: "lyra__talkmemory-head", text: "Author memory" });
+      const memoryHelp = memory.createDiv({ cls: "lyra__talkmemory-help" });
+      memoryHelp.setText(this.deps.getSettings().story.rememberConversations
+        ? "One short note per line. Label it Preference, Decision, Rejected, Tentative, or Fact; add a chapter or chat source for facts."
+        : "Session only. Saved memory is not sent. Label each note Preference, Decision, Rejected, Tentative, or Fact.");
+      const memoryInput = memory.createEl("textarea", { cls: "lyra__input lyra__talkmemory-input" });
+      memoryInput.rows = 5;
+      memoryInput.placeholder = "Preference: …\nDecision: …\nRejected: …\nTentative: …\nFact [Chapter 2]: …";
+      memoryInput.setAttribute("aria-label", "Author-edited conversation memory");
+      memoryInput.addEventListener("input", () => {
+        this.talkMemoryClearArmed = false;
+        this.paintTalk();
+      });
+      this.talkMemoryInput = memoryInput;
+
+      const memoryActions = memory.createDiv({ cls: "lyra__actions" });
+      this.talkMemorySave = this.action(memoryActions, "Save memory", () => this.saveTalkMemory());
+      this.talkMemoryClear = this.action(memoryActions, "Clear", () => this.clearTalkMemory());
+      this.action(memoryActions, "Close", () => {
+        this.talkMemoryOpen = false;
+        this.talkMemoryClearArmed = false;
+        this.paintTalk();
+      });
+      this.talkMemoryPanel = memory;
     }
 
     this.paintTalk();
@@ -1142,6 +1205,62 @@ export class Companion {
     this.talkNote?.setText(this.talkProblem ?? "");
     if (this.talkSend !== null) this.talkSend.disabled = this.talkWaiting;
     this.talkClear?.setText(this.clearArmed ? "Forget it all?" : "Forget");
+    if (this.talkMemoryPanel !== null) this.talkMemoryPanel.hidden = !this.talkMemoryOpen;
+    this.talkMemoryClear?.setText(this.talkMemoryClearArmed ? "Clear it?" : "Clear");
+    if (this.talkMemorySave !== null) this.talkMemorySave.disabled = this.talkWaiting;
+    if (this.talkMemoryClear !== null) this.talkMemoryClear.disabled = this.talkWaiting;
+  }
+
+  private toggleTalkMemory(): void {
+    const scope = this.talkScope;
+    if (scope === null) return;
+    this.talkMemoryOpen = !this.talkMemoryOpen;
+    this.talkMemoryClearArmed = false;
+    if (!this.talkMemoryOpen) {
+      this.paintTalk();
+      return;
+    }
+
+    this.paintTalk();
+    void this.deps.talk.memory(scope).then((memory) => {
+      if (!this.talking || this.talkScope?.path !== scope.path || !this.talkMemoryOpen) return;
+      if (this.talkMemoryInput !== null) this.talkMemoryInput.value = memory;
+      this.talkNote?.setText("");
+    });
+  }
+
+  private saveTalkMemory(): void {
+    const scope = this.talkScope;
+    if (scope === null || this.talkMemoryInput === null || this.talkWaiting) return;
+    const text = this.talkMemoryInput.value.trim();
+    void this.deps.talk.saveMemory(scope, text).then(() => {
+      if (this.talkScope?.path !== scope.path) return;
+      this.talkNote?.setText("Memory saved.");
+      this.talkMemoryClearArmed = false;
+      this.paintTalk();
+    }).catch(() => {
+      this.talkNote?.setText("Could not save memory.");
+    });
+  }
+
+  private clearTalkMemory(): void {
+    const scope = this.talkScope;
+    if (scope === null || this.talkWaiting) return;
+    if (!this.talkMemoryClearArmed) {
+      this.talkMemoryClearArmed = true;
+      this.paintTalk();
+      return;
+    }
+
+    this.talkMemoryClearArmed = false;
+    void this.deps.talk.saveMemory(scope, "").then(() => {
+      if (this.talkScope?.path !== scope.path) return;
+      if (this.talkMemoryInput !== null) this.talkMemoryInput.value = "";
+      this.talkNote?.setText("Memory cleared.");
+      this.paintTalk();
+    }).catch(() => {
+      this.talkNote?.setText("Could not clear memory.");
+    });
   }
 
   /** How much of the text is below what the box is showing. */
@@ -1454,7 +1573,12 @@ export class Companion {
       const entry = body.createDiv({ cls: "lyra__turn" });
       entry.dataset.role = turn.role;
       entry.createSpan({ cls: "lyra__speaker", text: turn.role === "user" ? "You" : name });
-      writeInline(entry.createDiv({ cls: "lyra__said" }), turn.text);
+      const said = entry.createDiv({ cls: turn.role === "reviewer" ? "lyra__said lyra__said--markdown" : "lyra__said" });
+      if (turn.role === "reviewer" && this.deps.renderMarkdown !== undefined) {
+        this.deps.renderMarkdown(parseReviewerReply(turn.text).text, said);
+      } else {
+        writeInline(said, turn.text);
+      }
     }
 
     if (line.example !== undefined) this.renderExample(body, line, line.example);
@@ -1712,6 +1836,7 @@ export class Companion {
 
   private action(container: HTMLElement, label: string, run: () => void, disabled = false): HTMLButtonElement {
     const button = container.createEl("button", { cls: "lyra__action", text: label });
+    button.type = "button";
     button.disabled = disabled;
     button.addEventListener("click", () => {
       this.markNoteInteraction();
@@ -1724,6 +1849,7 @@ export class Companion {
   private step(direction: -1 | 1): void {
     const lines = this.lines();
     const index = lines.findIndex((line) => line.id === this.currentId);
+    if (index < 0) return;
     const next = lines[index + direction];
     if (next === undefined) return;
 
@@ -1776,12 +1902,15 @@ export class Companion {
     });
     const working =
       this.activity === "waiting" || this.activity === "reading" || this.answering.size > 0 || this.talkWaiting;
-    const latestReviewerReaction = line?.thread.filter((turn) => turn.role === "reviewer").at(-1)?.reaction;
+    const latestReviewer = line?.thread.filter((turn) => turn.role === "reviewer").at(-1);
+    const latestReviewerReaction = latestReviewer?.reaction;
     const requestedReaction = this.talking ? currentTalkLine?.reaction : latestReviewerReaction ?? line?.reaction;
     const passiveSlot = Math.floor(Date.now() / REST_SCENE_MS);
     const preferred = this.talking && !this.talkWaiting ? this.talkScene() : undefined;
     const sceneSlot = Math.floor(Date.now() / IN_PROGRESS_SCENE_MS);
-    const activeContext = preferred ?? mood;
+    const activeContext = this.talking
+      ? ["talk", this.talkScope?.path, this.talkAt, currentTalkLine?.who, currentTalkLine?.reaction, mood, preferred].join("|")
+      : ["note", this.deps.activePath(), line?.id, latestReviewer?.id, latestReviewerReaction, line?.reaction, mood, preferred].join("|");
     let selected: ReturnType<SceneRotation["next"]>;
     if (mode === "passive") {
       const enteringPassive = root.dataset.mode !== "passive";
@@ -1801,22 +1930,16 @@ export class Companion {
         this.inProgressSceneSlot = sceneSlot;
       }
       selected = this.selectedInProgressScene;
-      } else {
+    } else {
       const enteringActive = root.dataset.mode !== "active" || root.dataset.scene?.startsWith("in_progress_");
-      if (
-        this.selectedActiveScene === null ||
-        this.activeSceneSlot !== sceneSlot ||
-        this.activeSceneContext !== activeContext ||
-        enteringActive
-      ) {
-        this.selectedActiveScene = this.activeSceneRotation.next(activeSceneOptions(mood, preferred));
-        this.activeSceneSlot = sceneSlot;
+      if (this.selectedActiveScene === null || this.activeSceneContext !== activeContext || enteringActive) {
+        const reaction = isActiveReaction(requestedReaction)
+          ? ACTIVE_SCENES.find((entry) => entry.id === requestedReaction)
+          : undefined;
+        this.selectedActiveScene = reaction ?? this.activeSceneRotation.next(activeSceneOptions(mood, preferred));
         this.activeSceneContext = activeContext;
       }
       selected = this.selectedActiveScene;
-    }
-    if (mode === "active" && !working && isActiveReaction(requestedReaction)) {
-      selected = ACTIVE_SCENES.find((entry) => entry.id === requestedReaction) ?? selected;
     }
     const url = this.deps.assetUrl(selected.asset);
     root.dataset.mood = mood;
@@ -1835,6 +1958,7 @@ export class Companion {
     if (!animated) {
       this.nextScene = null;
       scene.removeClass("is-missing");
+      delete scene.dataset.fallback;
       scene.setAttribute("src", url);
       return;
     }
@@ -1858,6 +1982,7 @@ export class Companion {
       if (this.nextScene === null || this.scene === null) return;
 
       this.scene.removeClass("is-missing");
+      delete this.scene.dataset.fallback;
       this.scene.setAttribute("src", this.nextScene);
     }, quick ? FLICKER_CUT_MS : CHANNEL_CUT_MS);
 

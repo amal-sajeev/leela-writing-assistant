@@ -98,6 +98,35 @@ describe("filterComments", () => {
     expect(rejected[0]?.reason).toBe("duplicate");
   });
 
+  it("reconciles near duplicate findings about the same root issue", () => {
+    const candidates = [
+      comment({
+        quote: "twelve participants proves that retrieval augmented generation is always more accurate",
+        body: "Twelve participants cannot support a universal claim about accuracy.",
+      }),
+      comment({
+        quote: "twelve participants proves that retrieval augmented generation is always more accurate",
+        body: "Those twelve participants are too few to justify the universal accuracy claim.",
+      }),
+    ];
+
+    const { accepted, rejected } = filterComments(candidates, options());
+
+    expect(accepted).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBe("duplicate");
+  });
+
+  it("keeps independent findings on the same quote when their categories differ", () => {
+    const candidates = [
+      comment({ category: "reasoning", body: "Twelve participants cannot support a universal claim." }),
+      comment({ category: "clarity", body: "The word accurate needs a defined outcome." }),
+    ];
+
+    const { accepted } = filterComments(candidates, options());
+    expect(accepted).toHaveLength(2);
+  });
+
   it("drops a point the author dismissed, however it is worded this time", () => {
     const settled = [
       { quote: "always more accurate", body: "Twelve participants is a thin basis.", category: "reasoning" as const },

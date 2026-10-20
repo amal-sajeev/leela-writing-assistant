@@ -36,6 +36,7 @@ describe("what she is told when the author talks to her", () => {
           reason: "manual",
         },
       ],
+      memory: "Preference: Mara stays.\nRejected [chat 2026-10-20]: She was adopted.\nTentative: the photograph may be a red herring.",
       open: { title: "Chapter 9", text: "Mara lifted the tile.", selected: true },
       history: [said("author", "Is the brother too obvious?"), said("lyra", "A little.")],
       message: "  So should I cut the photograph?  ",
@@ -49,6 +50,9 @@ describe("what she is told when the author talks to her", () => {
     expect(prompt.systemPrompt).not.toContain("Look for the places where a reader");
 
     expect(prompt.userPrompt).toContain("NOVEL:\nThe Quiet Station");
+    expect(prompt.userPrompt).toContain("AUTHOR-EDITED MEMORY (labels and sources are the author's)");
+    expect(prompt.userPrompt).toContain("Rejected [chat 2026-10-20]: She was adopted.");
+    expect(prompt.systemPrompt).toContain("Rejected ideas stay rejected; tentative ideas are not canon.");
     expect(prompt.userPrompt).toContain("STORY OUTLINE:\nTHE AUTHOR'S PLAN:");
     expect(prompt.userPrompt).toContain("[Novel/Lyra notes/Characters.md]\nMara Vance:");
     expect(prompt.userPrompt).toContain(
@@ -231,6 +235,60 @@ describe("where a conversation is kept", () => {
     await store.clear("t.json");
     expect(await store.load("t.json")).toEqual([]);
     expect(JSON.parse(map.get("t.json")!)).toEqual({ version: 1, messages: [] });
+  });
+
+  it("keeps disabled chat memory in the session and leaves saved files alone until Forget", async () => {
+    const map = new Map([["t.json", JSON.stringify({ version: 1, messages: [said("author", "Old.")] })]]);
+    const store = new TalkStore({
+      remember: () => false,
+      read: (path) => Promise.resolve(map.get(path) ?? null),
+      write: (path, text) => {
+        map.set(path, text);
+        return Promise.resolve();
+      },
+    });
+
+    expect(await store.load("t.json")).toEqual([]);
+    await store.add("t.json", said("author", "New."));
+    expect(await store.load("t.json")).toEqual([said("author", "New.")]);
+    expect(JSON.parse(map.get("t.json")!).messages).toEqual([said("author", "Old.")]);
+
+    await store.clear("t.json");
+    expect(JSON.parse(map.get("t.json")!).messages).toEqual([]);
+  });
+
+  it("keeps novel memory separate, bounded, editable, and off when saved memory is disabled", async () => {
+    const map = new Map([[
+      "novel/memory.json",
+      JSON.stringify({ version: 1, memory: "Decision: Mara stays." }),
+    ]]);
+    let remember = true;
+    const store = new TalkStore({
+      remember: () => remember,
+      read: (path) => Promise.resolve(map.get(path) ?? null),
+      write: (path, text) => {
+        map.set(path, text);
+        return Promise.resolve();
+      },
+    });
+
+    expect(await store.loadMemory("novel/memory.json")).toBe("Decision: Mara stays.");
+    await store.saveMemory("novel/memory.json", "Rejected [Chapter 4]: the adoption reveal.");
+    expect(JSON.parse(map.get("novel/memory.json")!).memory).toBe("Rejected [Chapter 4]: the adoption reveal.");
+
+    remember = false;
+    const fresh = new TalkStore({
+      remember: () => remember,
+      read: (path) => Promise.resolve(map.get(path) ?? null),
+      write: (path, text) => {
+        map.set(path, text);
+        return Promise.resolve();
+      },
+    });
+    expect(await fresh.loadMemory("novel/memory.json")).toBe("");
+    await fresh.saveMemory("novel/memory.json", "Preference: terse answers.");
+    expect(await fresh.loadMemory("novel/memory.json")).toBe("Preference: terse answers.");
+    expect(JSON.parse(map.get("novel/memory.json")!).memory).toBe("Rejected [Chapter 4]: the adoption reveal.");
   });
 });
 

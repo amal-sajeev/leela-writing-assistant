@@ -9,6 +9,7 @@ export const PROVIDER_ERROR_CODES = [
   "timeout",
   "network",
   "invalid_response",
+  "output_truncated",
   "model_not_found",
   "provider_error",
 ] as const;
@@ -27,13 +28,15 @@ export class ProviderError extends Error {
     public readonly status?: number,
     /** Honoured by the retry backoff when a provider sends `Retry-After`. */
     public readonly retryAfterMs?: number,
+    /** Safe provider metadata, never raw response content. */
+    public readonly completion?: { finishReason?: string; stopReason?: string; requestId?: string },
   ) {
     super(message);
     this.name = "ProviderError";
   }
 
   withRetryAfter(retryAfterMs: number): ProviderError {
-    return new ProviderError(this.code, this.message, this.retryable, this.status, retryAfterMs);
+    return new ProviderError(this.code, this.message, this.retryable, this.status, retryAfterMs, this.completion);
   }
 }
 
@@ -74,6 +77,8 @@ export function describeProviderError(error: ProviderError, provider?: ProviderI
       return "Network unavailable. Review will retry when the connection returns.";
     case "invalid_response":
       return "The model returned an invalid review. No comments were added.";
+    case "output_truncated":
+      return "The provider stopped before the review finished.";
     case "model_not_found":
       return `${name} does not recognise the configured model.`;
     case "provider_error":

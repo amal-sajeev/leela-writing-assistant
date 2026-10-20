@@ -2,7 +2,15 @@ import type { RenderedPrompt } from "../review/prompt-builder";
 import type { RetrievedContext } from "../types";
 import { hashText } from "../utils/hash";
 import { joinVaultPath, pathBasename } from "../utils/paths";
-import { buildDigestPrompt, mergeFacts, parseChapterFacts, splitChapter, type ChapterFacts } from "./facts";
+import {
+  buildDigestPrompt,
+  chapterFactsSchema,
+  mergeFacts,
+  parseChapterFacts,
+  splitChapter,
+  STORY_DIGEST_PROMPT_VERSION,
+  type ChapterFacts,
+} from "./facts";
 import {
   correctionsIn,
   emptyState,
@@ -11,6 +19,7 @@ import {
   relevantNotes,
   renderNote,
   STORY_STATE_VERSION,
+  type ChapterCheckpoint,
   type NoteFile,
   type StoryState,
 } from "./notes";
@@ -41,6 +50,8 @@ export interface KeeperDeps {
   writeState(path: string, text: string): Promise<void>;
   /** Sends one chapter to be recorded, or her record to be outlined, and resolves to the reply. */
   digest(prompt: RenderedPrompt): Promise<string>;
+  /** Changes to the provider model invalidate partial chapter digests. */
+  modelId?(): string;
   /** False while she has been told not to read along, or has no way to. */
   mayRead(): boolean;
   /** Told when she starts and stops reading chapters, for her window. */
@@ -68,6 +79,8 @@ const STATE_FILE = "story.json";
 
 export class StoryKeeper {
   private readonly states = new Map<string, StoryState>();
+  private readonly readOnly = new Set<string>();
+  private readonly chapterTexts = new Map<string, string>();
   private readonly timers = new Map<string, unknown>();
   private readonly reading = new Set<string>();
   private readonly told = new Set<string>();
@@ -84,6 +97,7 @@ export class StoryKeeper {
 
   /** A note changed. If it is a chapter, she reads it once it has been left alone. */
   noteChanged(filePath: string): void {
+    this.invalidateChapter(filePath);
     const novel = this.novelOf(filePath);
     if (novel === null || !isChapterOf(novel, filePath)) return;
 
@@ -105,7 +119,12 @@ export class StoryKeeper {
     const clock = this.deps.timers ?? SYSTEM_TIMERS;
     for (const handle of this.timers.values()) clock.clearTimeout(handle);
     this.timers.clear();
+    this.chapterTexts.clear();
     this.search.clear();
+  }
+
+  invalidateChapter(path: string): void {
+    this.chapterTexts.delete(path);
   }
 
   /** Chapters she has not read, or that have changed since she did, in reading order. */
@@ -145,6 +164,7 @@ export class StoryKeeper {
 
     try {
       const state = await this.load(novel);
+      if (this.readOnly.has(novel)) return { read: 0, failed: 0, waiting: 0 };
       // Renamed chapters are followed first, so they are not forgotten and read again.
       let unread = await this.unread(novel);
       this.forget(novel, state);
@@ -177,8 +197,20 @@ export class StoryKeeper {
           const recorded: ChapterFacts[] = [];
           const characters = new Set(knownNames(state, "characters"));
           const places = new Set(knownNames(state, "places"));
+          const checkpoint = this.checkpointFor(state, path, text, parts.length);
+          state.checkpoints ??= {};
+          state.checkpoints[path] = checkpoint;
+          await this.deps.writeState(this.statePath(novel), JSON.stringify(state));
 
           for (const [at, part] of parts.entries()) {
+            const saved = checkpoint.completedParts[at];
+            if (saved !== null && saved !== undefined) {
+              recorded.push(saved);
+              for (const entry of saved.characters) characters.add(entry.name);
+              for (const entry of saved.places) places.add(entry.name);
+              continue;
+            }
+
             const reply = await this.deps.digest(
               buildDigestPrompt({
                 novelTitle: pathBasename(novel) || "Untitled",
@@ -195,6 +227,8 @@ export class StoryKeeper {
             for (const entry of facts.characters) characters.add(entry.name);
             for (const entry of facts.places) places.add(entry.name);
             recorded.push(facts);
+            checkpoint.completedParts[at] = facts;
+            await this.deps.writeState(this.statePath(novel), JSON.stringify(state));
           }
 
           state.chapters[path] = {
@@ -202,6 +236,7 @@ export class StoryKeeper {
             readAt: (this.deps.now ?? Date.now)(),
             facts: mergeFacts(recorded),
           };
+          delete state.checkpoints?.[path];
           read += 1;
           justRead.push(path);
         } catch {
@@ -265,8 +300,8 @@ export class StoryKeeper {
 
     const chapters: Array<{ path: string; text: string }> = [];
     for (const path of before) {
-      const chapter = await this.deps.read(path);
-      if (chapter !== null) chapters.push({ path, text: bodyOf(chapter) });
+      const chapter = await this.chapterText(path);
+      if (chapter !== null) chapters.push({ path, text: chapter });
     }
 
     return this.search.find(chapters, text);
@@ -322,6 +357,45 @@ export class StoryKeeper {
 
   private chapters(novel: string): string[] {
     return inReadingOrder(this.deps.notesIn(novel).filter((path) => isChapterOf(novel, path)));
+  }
+
+  private async chapterText(path: string): Promise<string | null> {
+    const cached = this.chapterTexts.get(path);
+    if (cached !== undefined) return cached;
+    const raw = await this.deps.read(path);
+    if (raw === null) return null;
+    const text = bodyOf(raw);
+    this.chapterTexts.set(path, text);
+    return text;
+  }
+
+  private checkpointFor(
+    state: StoryState,
+    path: string,
+    text: string,
+    partCount: number,
+  ): ChapterCheckpoint {
+    const existing = state.checkpoints?.[path];
+    const sourceHash = hashText(text);
+    const modelId = this.deps.modelId?.() ?? "default";
+    if (
+      existing !== undefined &&
+      existing.sourceHash === sourceHash &&
+      existing.modelId === modelId &&
+      existing.promptVersion === STORY_DIGEST_PROMPT_VERSION &&
+      existing.partCount === partCount &&
+      existing.completedParts.length === partCount
+    ) {
+      return existing;
+    }
+
+    return {
+      sourceHash,
+      modelId,
+      promptVersion: STORY_DIGEST_PROMPT_VERSION,
+      partCount,
+      completedParts: Array.from({ length: partCount }, () => null),
+    };
   }
 
   /** Drops what she recorded from chapters that are no longer there. */
@@ -387,18 +461,22 @@ export class StoryKeeper {
     try {
       const raw = await this.deps.readState(this.statePath(novel));
       if (raw !== null) {
-        const parsed = JSON.parse(raw) as Partial<StoryState>;
-        if (parsed.version === STORY_STATE_VERSION && typeof parsed.chapters === "object" && parsed.chapters !== null) {
+        const parsed: unknown = JSON.parse(raw);
+        if (isRecord(parsed) && (parsed.version === 1 || parsed.version === STORY_STATE_VERSION) && validChapters(parsed.chapters)) {
           state = {
             version: STORY_STATE_VERSION,
             chapters: parsed.chapters,
-            ...(parsed.outline === undefined ? {} : { outline: parsed.outline }),
+            ...(validCheckpoints(parsed.checkpoints) ? { checkpoints: parsed.checkpoints } : {}),
+            ...(validOutline(parsed.outline) ? { outline: parsed.outline } : {}),
           };
+        } else {
+          this.readOnly.add(novel);
+          this.deps.onProblem?.("the story record is unreadable or newer, so it has been left untouched");
         }
       }
     } catch {
-      // A record she cannot read is rebuilt from the chapters, which are the truth.
-      this.deps.onProblem?.("the story record could not be read and will be rebuilt");
+      this.readOnly.add(novel);
+      this.deps.onProblem?.("the story record could not be read, so it has been left untouched");
     }
 
     this.states.set(novel, state);
@@ -416,6 +494,48 @@ export class StoryKeeper {
   private statePath(novel: string): string {
     return joinVaultPath(notesFolderOf(novel), STATE_FILE);
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validChapters(value: unknown): value is StoryState["chapters"] {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every((entry) =>
+    isRecord(entry) &&
+    typeof entry.hash === "string" &&
+    typeof entry.readAt === "number" &&
+    chapterFactsSchema.safeParse(entry.facts).success,
+  );
+}
+
+function validOutline(value: unknown): value is NonNullable<StoryState["outline"]> {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.premise === "string" &&
+    Array.isArray(value.movements) &&
+    Array.isArray(value.owed) &&
+    Array.isArray(value.changed) &&
+    Array.isArray(value.after)
+  );
+}
+
+function validCheckpoints(value: unknown): value is Record<string, ChapterCheckpoint> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return Object.values(value as Record<string, unknown>).every((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return false;
+    const checkpoint = entry as Record<string, unknown>;
+    return (
+      typeof checkpoint.sourceHash === "string" &&
+      typeof checkpoint.modelId === "string" &&
+      typeof checkpoint.promptVersion === "number" &&
+      typeof checkpoint.partCount === "number" &&
+      Array.isArray(checkpoint.completedParts) &&
+      checkpoint.completedParts.length === checkpoint.partCount &&
+      checkpoint.completedParts.every((part) => part === null || chapterFactsSchema.safeParse(part).success)
+    );
+  });
 }
 
 /** A note without its frontmatter, which is never sent. */

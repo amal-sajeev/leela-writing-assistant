@@ -8,15 +8,24 @@
 export const PROVIDER_IDS = ["mistral", "openai", "anthropic"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
+export const REVIEW_DEPTHS = ["quick", "standard", "exhaustive"] as const;
+export type ReviewDepth = (typeof REVIEW_DEPTHS)[number];
+
 /** Stable IDs the model may choose for Lyra's active expressions. */
 export const ACTIVE_REACTION_CATALOG = {
-  idle_concerned: "concerned, attentive",
-  idle_goodbye: "playful, teasing",
+  idle_embarassed: "bashful, sheepish; for a genuinely awkward beat",
+  idle_goodbye: "playful, teasing; not a farewell",
+  idle_happy: "warm, pleased, easy smile",
+  idle_happy_resting: "calm, content, quietly relaxed",
+  idle_concerned: "mildly concerned, attentive",
   idle_laughing: "amused, laughing",
+  idle_sad: "somber, sympathetic; only for genuinely sad moments",
   idle_serious: "thoughtful, focused",
-  idle_shocked_happy: "delighted, pleasantly surprised",
-  idle_shocked_sad: "worried, sympathetic",
-  idle_welcome: "warm, welcoming",
+  idle_shocked_happy: "delighted at clearly good news",
+  idle_shocked_sad: "worried and sympathetic; reserve for genuinely upsetting news",
+  idle_sulking: "playfully pouty, mock-annoyed; not genuine anger",
+  idle_teasing: "mischievous, knowingly playful",
+  idle_welcome: "warm greeting",
 } as const;
 export type ActiveReaction = keyof typeof ACTIVE_REACTION_CATALOG;
 export const ACTIVE_REACTION_IDS = Object.keys(ACTIVE_REACTION_CATALOG) as ActiveReaction[];
@@ -170,6 +179,9 @@ export interface RetrievedContext {
   excerpt: string;
   score: number;
   reason: "wikilink" | "lexical" | "manual";
+  start?: number;
+  end?: number;
+  heading?: string;
 }
 
 export interface ReviewRequest {
@@ -184,6 +196,10 @@ export interface ReviewRequest {
 
   /** Heading path of the reviewed block, outermost first (section 51). */
   headingPath?: string[];
+  /** Small, selected craft checks for the enabled review mode and categories. */
+  analysisTechniques?: string[];
+  /** Separate opt-in claim audit. It does not imply access to external sources. */
+  factCheckMode?: boolean;
 
   projectInstructions?: string;
   retrievedVaultContext?: RetrievedContext[];
@@ -211,15 +227,23 @@ export interface ProviderUsage {
   outputTokens?: number;
 }
 
+export interface ProviderCompletion {
+  finishReason?: string;
+  stopReason?: string;
+  requestId?: string;
+}
+
 export interface ReviewResult {
   comments: ProposedComment[];
   usage?: ProviderUsage;
+  completion?: ProviderCompletion;
 }
 
 /** What a whole-note pass returns beyond its anchored comments (section 24). */
 export interface DocumentReviewResult {
   observations: ProposedObservation[];
   usage?: ProviderUsage;
+  completion?: ProviderCompletion;
 }
 
 /** What the plugin is currently doing, for the status bar (section 22). */

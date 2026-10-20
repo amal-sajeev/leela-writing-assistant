@@ -90,6 +90,24 @@ describe("reading fiction as fiction", () => {
     expect(seen[0]!.user).toContain("PASSAGE (the only text you are reviewing)");
   });
 
+  it("selects a short analysis playbook for the writing mode", async () => {
+    const fictionSeen: Array<{ system: string; user: string }> = [];
+    await reviewPassage({ ...input, mode: "exhaustive" }, DEFAULT_SETTINGS, provider({ seen: fictionSeen }));
+    expect(fictionSeen[0]!.system).toContain("scene-craft:");
+    expect(fictionSeen[0]!.system).toContain("narrative-control:");
+    expect(fictionSeen[0]!.system).not.toContain("argument:");
+
+    const essaySeen: Array<{ system: string; user: string }> = [];
+    await reviewPassage(
+      { ...input, mode: "exhaustive" },
+      settings((draft) => void (draft.persona.mode = "essay")),
+      provider({ seen: essaySeen }),
+    );
+    expect(essaySeen[0]!.system).toContain("argument:");
+    expect(essaySeen[0]!.system).toContain("factual-precision:");
+    expect(essaySeen[0]!.system).not.toContain("scene-craft:");
+  });
+
   it("uses the essay prompt for essays, and a brief that follows the mode", async () => {
     const essay = settings((draft) => void (draft.persona.mode = "essay"));
     const seen: Array<{ system: string; user: string }> = [];
@@ -102,6 +120,20 @@ describe("reading fiction as fiction", () => {
 
     const own = settings((draft) => void (draft.persona.focus = "Only dialogue."));
     expect(focusFor(own)).toBe("Only dialogue.");
+  });
+
+  it("keeps claim checking opt-in and never treats model memory as a source", async () => {
+    expect(DEFAULT_SETTINGS.manualReview.factCheck).toBe(false);
+    const essay = settings((draft) => {
+      draft.persona.mode = "essay";
+      draft.manualReview.factCheck = true;
+    });
+    const seen: Array<{ system: string; user: string }> = [];
+    await reviewPassage({ ...input, factCheck: true }, essay, provider({ seen }));
+
+    expect(seen[0]!.system).toContain("FACT-CHECK MODE");
+    expect(seen[0]!.system).toContain("do not call it false from memory");
+    expect(seen[0]!.system).toContain("Never invent a source, URL, date, or quotation.");
   });
 
   it("changes her manner with the tone, and nothing else", () => {
@@ -167,6 +199,19 @@ describe("reading fiction as fiction", () => {
 
     expect(asked.comments).toHaveLength(2);
     expect(live.comments.map((comment) => comment.anchor.quote)).toEqual(["a sudden surge of grief"]);
+  });
+
+  it("lets an unlimited manual review use its response budget without a finding-count target", async () => {
+    const seen: Array<{ system: string; user: string }> = [];
+    const outcome = await reviewPassage(
+      { ...input, mode: "quick", unlimitedFindings: true },
+      DEFAULT_SETTINGS,
+      provider({ seen }),
+    );
+
+    expect(seen[0]!.system).toContain("Return every distinct, well-supported finding");
+    expect(seen[0]!.system).not.toContain("Return at most 20 finding");
+    expect(outcome.complete).toBe(true);
   });
 
   it("does not raise what the author asked her to stop mentioning", () => {

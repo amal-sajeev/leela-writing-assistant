@@ -26,6 +26,9 @@ export const FRONTMATTER_OPT_OUT_KEY = "lyra";
 /** The largest selection she will read in one go. */
 export const MAX_SELECTION_CHARACTERS = 8_000;
 
+/** Long manual ranges are chunked, and stop at this run-level safety bound. */
+export const MAX_EXHAUSTIVE_REVIEW_CHARACTERS = 50_000;
+
 /** Characters of surrounding text stored with each anchor. */
 export const ANCHOR_CONTEXT_CHARACTERS = 100;
 

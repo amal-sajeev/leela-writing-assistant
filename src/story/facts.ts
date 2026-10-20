@@ -33,6 +33,8 @@ export interface ChapterFacts {
   threads: Array<{ what: string; state: "opened" | "advanced" | "resolved" }>;
 }
 
+export const STORY_DIGEST_PROMPT_VERSION = 1;
+
 /** Text that may be missing or null, as a trimmed string or nothing. */
 const optionalText = z
   .union([z.string(), z.null()])

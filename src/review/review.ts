@@ -2,18 +2,22 @@ import { createAnchor } from "../comments/anchor";
 import { withoutDashes } from "../utils/text";
 import { resolveAnchor } from "../comments/anchor-resolver";
 import { isSettled } from "../comments/comment-state";
-import { buildSelectionContext } from "../context/context-builder";
+import { buildSelectionContext, type HeadingEntry } from "../context/context-builder";
 import { redactKnownSecrets } from "../privacy/redaction";
 import type { AIProvider } from "../providers/provider";
 import { sensitivityPolicy } from "../reviewers/reviewer";
 import { focusFor, providerApiKeys, type LyraSettings, type Tone } from "../settings/settings";
-import type { CommentCategory, RetrievedContext, ReviewComment, ReviewerProfile } from "../types";
+import type { CommentCategory, RetrievedContext, ReviewComment, ReviewerProfile, ReviewDepth } from "../types";
 import { createId } from "../utils/ids";
 import { hashText } from "../utils/hash";
 import { normalizeForComparison } from "../utils/text";
+import { scoreAgainst } from "../utils/relevance";
 import { filterComments, type ExistingCommentSummary } from "./comment-filter";
+import { selectAnalysisTechniques } from "./analysis-techniques";
+import { reconcileIssueLedger } from "./issue-ledger";
 import { buildFictionPrompt } from "./fiction-prompt";
 import { buildReviewPrompt, type RenderedPrompt } from "./prompt-builder";
+import { planReviewJobs, ReviewOrchestrator, type ReviewProgress, type ReviewSpan } from "./review-orchestrator";
 
 /**
  * One review of one passage, start to finish: gather the text around it, ask the
@@ -28,7 +32,8 @@ import { buildReviewPrompt, type RenderedPrompt } from "./prompt-builder";
 export const REVIEWER_ID = "lyra";
 
 /** Comments she may make about one passage. */
-const MAX_COMMENTS = 3;
+const MAX_COMMENTS = 20;
+const UNLIMITED_RESPONSE_CEILING = 1_000;
 
 /** What she reads fiction for. */
 const FICTION_CATEGORIES: readonly CommentCategory[] = [
@@ -111,6 +116,7 @@ export interface PassageReviewInput {
   end: number;
   /** Offset after any frontmatter, which is never sent. */
   bodyStart?: number;
+  headings?: readonly HeadingEntry[];
   /** What she has already said about this note. */
   existing: readonly ReviewComment[];
   /** The author's brief for this story, when there is one. */
@@ -124,14 +130,39 @@ export interface PassageReviewInput {
    * yields one: a stream of notes while the author is still composing is noise.
    */
   limit?: number;
+  /** Depth is set for manual reviews; live review keeps the single-pass path. */
+  mode?: ReviewDepth;
+  /** Removes the application finding-count target for this manual run. */
+  unlimitedFindings?: boolean;
+  /** Per-request ceiling. The run-level limit is applied after the passes merge. */
+  maxCommentsPerRequest?: number;
+  /** Focus for a bounded analysis pass. */
+  analysisFocus?: string;
+  factCheck?: boolean;
+  onProgress?: (progress: ReviewProgress) => void;
 }
 
 export interface PassageReviewOutcome {
   /** The passage that was actually read, which may be wider than what was asked. */
   span: { start: number; end: number };
   comments: ReviewComment[];
+  /** Parts that completed every required pass; failed parts keep old comments. */
+  coveredSpans?: ReviewSpan[];
+  complete?: boolean;
+  warnings?: string[];
+  requests?: number;
+  diagnostics?: ReviewDiagnostics;
   /** Exactly what was sent, for the author to look at. Absent when nothing was. */
   sent?: RenderedPrompt;
+}
+
+export interface ReviewDiagnostics {
+  accepted: number;
+  duplicate: number;
+  unsupported: number;
+  lowConfidence: number;
+  settled: number;
+  otherRejected: number;
 }
 
 /** How she talks, whatever she is talking about: her manner, and what she never sounds like. */
@@ -161,6 +192,70 @@ export async function reviewPassage(
   provider: AIProvider,
   signal?: AbortSignal,
 ): Promise<PassageReviewOutcome> {
+  if (input.mode === undefined) return reviewSinglePassage(input, settings, provider, signal);
+
+  const jobs = planReviewJobs(input.documentText, input.start, input.end, input.mode);
+  if (jobs.length === 0) {
+    return { span: { start: input.start, end: input.end }, comments: [], coveredSpans: [], complete: true, requests: 0 };
+  }
+
+  const orchestrator = new ReviewOrchestrator();
+  const run = await orchestrator.run<PassageReviewOutcome>({
+    text: input.documentText,
+    jobs,
+    mode: input.mode,
+    signal,
+    onProgress: input.onProgress,
+    countFindings: (outcome) => outcome.comments.length,
+    coverageOf: (outcome) => outcome.span,
+    runJob: (job) =>
+      reviewSinglePassage(
+        {
+          ...input,
+          start: job.start,
+          end: job.end,
+          ...(input.unlimitedFindings
+            ? {}
+            : { maxCommentsPerRequest: input.maxCommentsPerRequest ?? input.limit ?? MAX_COMMENTS }),
+          analysisFocus: job.instruction,
+          onProgress: undefined,
+        },
+        settings,
+        provider,
+        signal,
+      ),
+  });
+
+  const ledger = reconcileIssueLedger(run.results.flatMap(({ value }) => value.comments));
+  const candidates = ledger.comments;
+  const ranked = candidates.sort(byImportance);
+  const comments = input.limit === undefined ? ranked : ranked.slice(0, Math.max(0, Math.floor(input.limit)));
+  const lastSent = run.results.at(-1)?.value.sent;
+  const diagnostics = run.results
+    .map(({ value }) => value.diagnostics)
+    .filter((value): value is ReviewDiagnostics => value !== undefined)
+    .reduce(addDiagnostics, emptyDiagnostics());
+  diagnostics.accepted = comments.length;
+  diagnostics.duplicate += ledger.duplicates;
+
+  return {
+    span: { start: input.start, end: input.end },
+    comments,
+    coveredSpans: run.coveredSpans,
+    complete: run.complete,
+    warnings: run.warnings,
+    requests: run.requests,
+    diagnostics,
+    ...(lastSent === undefined ? {} : { sent: lastSent }),
+  };
+}
+
+async function reviewSinglePassage(
+  input: PassageReviewInput,
+  settings: LyraSettings,
+  provider: AIProvider,
+  signal?: AbortSignal,
+): Promise<PassageReviewOutcome> {
   const who = persona(settings);
   // She can speak about the whole story only with an outline of it in front of her.
   const outline =
@@ -170,16 +265,19 @@ export async function reviewPassage(
   const reviewer: ReviewerProfile =
     outline.length > 0 ? { ...who, enabledCategories: ["arc", ...who.enabledCategories] } : who;
   const base = sensitivityPolicy(reviewer.sensitivity, reviewer.maxCommentsPerReview);
-  const policy =
-    input.limit === undefined
+  const requestedLimit = input.maxCommentsPerRequest ?? input.limit;
+  const policy = input.unlimitedFindings
+    ? { ...base, maxComments: UNLIMITED_RESPONSE_CEILING, unlimitedFindings: true }
+    : requestedLimit === undefined
       ? base
-      : { ...base, maxComments: Math.max(1, Math.min(base.maxComments, Math.floor(input.limit))) };
+      : { ...base, maxComments: Math.max(1, Math.min(MAX_COMMENTS, Math.floor(requestedLimit))) };
 
   const context = buildSelectionContext({
     documentText: input.documentText,
     selectionStart: input.start,
     selectionEnd: input.end,
     ...(input.bodyStart === undefined ? {} : { bodyStart: input.bodyStart }),
+    ...(input.headings === undefined ? {} : { headings: input.headings }),
     budget: {
       beforeCharacters: settings.context.beforeCharacters,
       afterCharacters: settings.context.afterCharacters,
@@ -193,13 +291,17 @@ export async function reviewPassage(
 
   const from = context.changedStart - context.beforeContext.length;
   const to = context.changedEnd + context.afterContext.length;
-  const nearby = input.existing
+  const nearbyCandidates = input.existing
     .filter((comment) => comment.status === "open" || isSettled(comment))
-    .filter((comment) => comment.anchor.end >= from && comment.anchor.start <= to)
+    .filter((comment) => comment.anchor.end >= from && comment.anchor.start <= to);
+  const nearby = rankNearbyComments(nearbyCandidates, context.changedText, context.changedStart, context.changedEnd, reviewer.enabledCategories)
     .slice(0, MAX_NEARBY);
+  const settledInRange = input.existing.filter((comment) =>
+    isSettled(comment) && comment.anchor.end >= context.changedStart && comment.anchor.start <= context.changedEnd,
+  );
 
   const build = settings.persona.mode === "fiction" ? buildFictionPrompt : buildReviewPrompt;
-  const prompt = build(
+  const builtPrompt = build(
     {
       filePath: input.filePath,
       documentTitle: input.documentTitle,
@@ -213,11 +315,20 @@ export async function reviewPassage(
       ...(input.canon === undefined || input.canon.length === 0
         ? {}
         : { retrievedVaultContext: [...input.canon] }),
+      ...(context.headingPath.length === 0 ? {} : { headingPath: context.headingPath }),
+      analysisTechniques: selectAnalysisTechniques(settings.persona.mode, reviewer.enabledCategories, input.mode ?? "quick"),
+      ...(input.factCheck === true && settings.persona.mode === "essay" ? { factCheckMode: true } : {}),
       ...(outline.length > 0 ? { storyOutline: outline } : {}),
       reviewer,
     },
     policy,
   );
+  const prompt: RenderedPrompt = input.analysisFocus === undefined
+    ? builtPrompt
+    : {
+        ...builtPrompt,
+        systemPrompt: `${builtPrompt.systemPrompt}\n\nFOCUSED PASS\n${input.analysisFocus}\nOnly report issues this pass can support. Do not invent findings to fill a category.`,
+      };
 
   // A key pasted into a note is ordinary text, and must not travel with it.
   const keys = Object.values(settings.providers).flatMap((entry) => providerApiKeys(entry));
@@ -242,7 +353,11 @@ export async function reviewPassage(
     minimumConfidence: policy.minimumConfidence,
     maxComments: policy.maxComments,
     existingComments: summarize((comment) => comment.status === "open"),
-    settledComments: summarize(isSettled),
+    settledComments: settledInRange.map((comment) => ({
+      quote: comment.anchor.quote,
+      body: comment.body,
+      category: comment.category,
+    })),
     allowTaste: settings.persona.pickiness > TASTE_FROM_PICKINESS,
   });
 
@@ -272,7 +387,34 @@ export async function reviewPassage(
     thread: [],
   }));
 
-  return { span, comments, sent };
+  return { span, comments, diagnostics: diagnosticsFor(filtered), sent };
+}
+
+function emptyDiagnostics(): ReviewDiagnostics {
+  return { accepted: 0, duplicate: 0, unsupported: 0, lowConfidence: 0, settled: 0, otherRejected: 0 };
+}
+
+function addDiagnostics(total: ReviewDiagnostics, next: ReviewDiagnostics): ReviewDiagnostics {
+  total.accepted += next.accepted;
+  total.duplicate += next.duplicate;
+  total.unsupported += next.unsupported;
+  total.lowConfidence += next.lowConfidence;
+  total.settled += next.settled;
+  total.otherRejected += next.otherRejected;
+  return total;
+}
+
+function diagnosticsFor(outcome: ReturnType<typeof filterComments>): ReviewDiagnostics {
+  const diagnostics = emptyDiagnostics();
+  diagnostics.accepted = outcome.accepted.length;
+  for (const { reason } of outcome.rejected) {
+    if (reason === "duplicate") diagnostics.duplicate += 1;
+    else if (reason === "quote-not-found" || reason === "quote-too-broad") diagnostics.unsupported += 1;
+    else if (reason === "low-confidence") diagnostics.lowConfidence += 1;
+    else if (reason === "settled") diagnostics.settled += 1;
+    else diagnostics.otherRejected += 1;
+  }
+  return diagnostics;
 }
 
 /**
@@ -287,13 +429,14 @@ export function mergeReview(
   outcome: PassageReviewOutcome,
   reviewedText: string,
 ): ReviewComment[] {
+  const coveredSpans = outcome.coveredSpans ?? [outcome.span];
   const kept = existing.filter((comment) => {
     if (comment.status !== "open" && comment.status !== "stale") return true;
 
     // Placed in the text that was reviewed, which later edits may have left behind.
     const placed = resolveAnchor(reviewedText, comment.anchor);
     const at = placed.status === "resolved" ? placed : comment.anchor;
-    return !(at.start < outcome.span.end && at.end > outcome.span.start);
+    return !coveredSpans.some((span) => at.start < span.end && at.end > span.start);
   });
 
   const key = (comment: ReviewComment): string =>
@@ -307,4 +450,34 @@ export function mergeReview(
   });
 
   return [...kept, ...added];
+}
+
+function rankNearbyComments(
+  comments: readonly ReviewComment[],
+  passage: string,
+  start: number,
+  end: number,
+  enabledCategories: readonly CommentCategory[],
+): ReviewComment[] {
+  const similarity = scoreAgainst(passage, comments.map((comment) => `${comment.anchor.quote}\n${comment.body}`));
+  return comments
+    .map((comment, index) => {
+      const distance = comment.anchor.end < start
+        ? start - comment.anchor.end
+        : comment.anchor.start > end
+          ? comment.anchor.start - end
+          : 0;
+      const proximity = distance === 0 ? 4 : 2 / (1 + distance / 500);
+      const settledPriority = isSettled(comment) ? 1 : 0;
+      const categoryPriority = enabledCategories.includes(comment.category) ? 0.25 : 0;
+      return { comment, score: proximity + (similarity[index] ?? 0) + settledPriority + categoryPriority };
+    })
+    .sort((a, b) => b.score - a.score || a.comment.anchor.start - b.comment.anchor.start)
+    .map(({ comment }) => comment);
+}
+
+function byImportance(a: ReviewComment, b: ReviewComment): number {
+  const rank = { high: 3, medium: 2, low: 1 } as const;
+  if (a.category === "strength" !== (b.category === "strength")) return a.category === "strength" ? 1 : -1;
+  return rank[b.severity] - rank[a.severity] || b.confidence - a.confidence || a.anchor.start - b.anchor.start;
 }

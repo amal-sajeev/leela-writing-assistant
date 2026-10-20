@@ -1,10 +1,14 @@
 # Lyra
 
-Your story's sharpest reader, right inside Obsidian.
+**Story-aware AI reviews, continuity checks, and in-character chat for writers.**
 
 Lyra catches craft and continuity snags, talks through your story, and leaves
 every edit in your hands. Pick a passage, ask why, or let her read along as you
 write.
+
+![Lyra reviews a selection, explains a note, and chats with the writer](images/lyra-demo.gif)
+
+By Amal Sajeev · [amsajeev333@gmail.com](mailto:amsajeev333@gmail.com)
 
 ## What she does
 
@@ -178,6 +182,12 @@ they are in a `talks` folder inside `Lyra notes`, and travel with the novel,
 and for anything else they are beside the plugin. Move to another note and the
 conversation changes with it; rename a note and its conversation goes with it.
 **Forget** clears the one on show, on the second press.
+**Memory** opens a short, author-edited set of notes shared across the novel's
+chapter chats. Label each line Preference, Decision, Rejected, Tentative, or
+Fact, and include a chapter or chat source for facts. Lyra keeps those labels
+straight; she does not treat a rejected idea as canon. You can edit or clear the
+notes there. Turn off **Remember chats between sessions** to keep saved chats
+and saved memory out of requests.
 
 The lined page under the heart on her frame erases everything she has said
 about the note you are in, settled comments included. She asks first, and
@@ -185,15 +195,15 @@ nothing is erased until you press **Erase them**.
 
 With each thing you say she is given the brief, your plan and her outline, the
 parts of her notes and of the chapters that bear on it, the last stretch of the
-conversation, and what you have open: your selection, or the text around your
-cursor. Here she is given the whole novel, not only the chapters before the one
-you are in.
+conversation, your author-edited memory when enabled, and what you have open:
+your selection, or the text around your cursor. Here she is given the whole
+novel, not only the chapters before the one you are in. Turn off **Remember
+chats between sessions** and saved chats and memory are left out of requests.
 
 ## Setting up
 
-1. `npm install`, then `npm run build`. The build copies the plugin into the vault
-   named in `.vaultpath` (or `OBSIDIAN_VAULT_PATH`). Its artwork is bundled into
-   `main.js`.
+1. `npm ci`, then `npm run build`. The build copies the plugin and separate
+   artwork files into the vault named in `.vaultpath` (or `OBSIDIAN_VAULT_PATH`).
 2. In Obsidian: Settings → Community plugins → enable **Lyra**.
 3. Settings → Lyra: choose a provider (Mistral, OpenAI or Anthropic), paste its
    API key, and press **Test**.
@@ -213,6 +223,9 @@ you change it; turn off **Keep notes on a novel** if you do not want that.
 | Read along as I write | Whether she reads passages on her own after you pause. |
 | Pause before she reads | How long that pause is. |
 | How much she lets pass | From "only serious problems" to "small ones too". |
+| Manual review depth | Quick read, Editorial review, or Exhaustive review. |
+| Unlimited findings in manual reviews | Removes the count cap; request, context, and time limits still apply. |
+| Fact-check claims during manual reviews | Essay-only checks for contradictions and claims needing sources; no web lookup. |
 | Say when something works | Allows one compliment per reading, with a reason. |
 | What she looks for | Her standing instructions, in your own words. Empty uses the default for the kind of writing. |
 | Keep notes on a novel | Whether she reads chapters as they change and keeps `Lyra notes`. On by default. |
@@ -235,8 +248,9 @@ sent when the automatic novel-notes feature is enabled.
 A review sends the passage, a few thousand characters either side of it, the
 comments she has already made nearby, your story brief with its canon notes if
 there is one, and the relevant part of her notes on the novel, to the provider
-you chose. Keeping those notes sends each chapter of a novel, whole, once each
-time it changes. **Lyra: Show what was last sent**
+you chose. A chat sends its recent turns and, when enabled, the short memory you
+edited. Keeping those notes sends each chapter of a novel, whole, once each time
+it changes. **Lyra: Show what was last sent**
 shows the exact text of the most recent request. Frontmatter is
 never sent, and any of your own API keys found in the text are removed first.
 
@@ -251,9 +265,9 @@ first time the plugin loads. On older versions they stay in the data file.
 
 ## Her window
 
-The art lives in `assets` and is bundled into `main.js`: `frame.webp` is the
-window frame, with a transparent opening for the scene. The former green-haired
-scene set has been removed.
+High-quality art lives in `assets` and is copied beside `main.js` for local
+installs. The release build also embeds smaller copies so Community installs
+get every scene from the standard plugin files.
 
 `src/companion/scene-assets.ts` groups scenes into active and passive sets. She
 uses the supplied original-design illustrations in `assets/idle` during chat,
@@ -285,6 +299,10 @@ npm run dev        # rebuild on change and copy into the vault
 npm test           # unit tests
 npm run verify     # typecheck, lint, tests and a production build
 ```
+
+Use Node 22.16.x and npm 10.9.2. The plugin targets Obsidian 1.7.2 and newer.
+CI uses `npm ci` and `npm run verify`; Dependabot checks npm packages and GitHub
+Actions weekly.
 
 The providers, the anchoring of comments to text, the live-review scheduler and
 the comment filter are shared with AI Reviewer and carry their tests with them.

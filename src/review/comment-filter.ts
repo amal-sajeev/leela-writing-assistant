@@ -1,5 +1,6 @@
 import type { CommentCategory, CommentSeverity, ProposedComment } from "../types";
 import { normalizeForComparison } from "../utils/text";
+import { terms } from "../utils/relevance";
 
 /**
  * Quality gate between the model and the editor (specification section 39).
@@ -87,15 +88,14 @@ export function filterComments(
   // Two levels of de-duplication: within this response, and against comments the
   // author already has on the passage.
   const seen = new Set<string>();
-  const existing = new Set(
-    (options.existingComments ?? []).map((comment) => topicKey(comment.quote, comment.body)),
-  );
+  const existing = options.existingComments ?? [];
 
   // A settled point is matched by passage and category rather than by wording:
   // the author dismissed the objection, not one phrasing of it.
   const settled = new Set(
     (options.settledComments ?? []).map((comment) => settledKey(comment.quote, comment.category)),
   );
+  const settledComments = options.settledComments ?? [];
 
   const quoteLimit = maximumQuoteLength(options.reviewedText);
   let strengths = 0;
@@ -119,14 +119,19 @@ export function filterComments(
 
     if (
       settled.has(settledKey(exactQuote, comment.category)) ||
-      settled.has(settledKey(exactQuote, undefined))
+      settled.has(settledKey(exactQuote, undefined)) ||
+      settledComments.some((entry) => nearDuplicate(exactQuote, comment, entry.quote, entry.body, entry.category))
     ) {
       rejected.push({ comment, reason: "settled" });
       continue;
     }
 
     const key = `${comment.category}::${topicKey(exactQuote, comment.body)}`;
-    if (seen.has(key) || existing.has(topicKey(exactQuote, comment.body))) {
+    if (
+      seen.has(key) ||
+      existing.some((entry) => nearDuplicate(exactQuote, comment, entry.quote, entry.body, entry.category)) ||
+      accepted.some((entry) => nearDuplicate(exactQuote, comment, entry.quote, entry.body, entry.category))
+    ) {
       rejected.push({ comment, reason: "duplicate" });
       continue;
     }
@@ -229,6 +234,26 @@ function escapeRegExp(text: string): string {
  */
 function topicKey(quote: string, body: string): string {
   return `${normalizeForComparison(quote)}::${normalizeForComparison(body).slice(0, 60)}`;
+}
+
+function nearDuplicate(
+  quote: string,
+  comment: ProposedComment,
+  otherQuote: string,
+  otherBody: string,
+  otherCategory?: CommentCategory,
+): boolean {
+  if (otherCategory !== undefined && comment.category !== otherCategory) return false;
+  return tokenOverlap(quote, otherQuote) >= 0.5 && tokenOverlap(comment.body, otherBody) >= 0.55;
+}
+
+function tokenOverlap(left: string, right: string): number {
+  const leftTerms = new Set(terms(left));
+  const rightTerms = new Set(terms(right));
+  if (leftTerms.size === 0 || rightTerms.size === 0) return 0;
+  let shared = 0;
+  for (const term of leftTerms) if (rightTerms.has(term)) shared += 1;
+  return shared / Math.min(leftTerms.size, rightTerms.size);
 }
 
 /** Identity of "this objection about this passage", regardless of how it is put. */

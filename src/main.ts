@@ -1,4 +1,4 @@
-import { MarkdownView, normalizePath, Notice, Plugin, requireApiVersion, TFile, type Editor } from "obsidian";
+import { MarkdownRenderer, MarkdownView, normalizePath, Notice, Plugin, requireApiVersion, TFile, type Editor } from "obsidian";
 
 import {
   buildTalkPrompt,
@@ -22,9 +22,11 @@ import {
   COMMENTS_FILE_NAME,
   FRONTMATTER_OPT_OUT_KEY,
   MAX_SELECTION_CHARACTERS,
+  MAX_EXHAUSTIVE_REVIEW_CHARACTERS,
   PLUGIN_ID,
 } from "./constants";
 import { BRIEF_TEMPLATE, briefPathsFor, isBrief, newBriefPathFor, storyContext } from "./context/brief";
+import type { HeadingEntry } from "./context/context-builder";
 import { EditorMarks } from "./editor/marks";
 import { AnthropicProvider } from "./providers/anthropic-provider";
 import { MistralProvider } from "./providers/mistral-provider";
@@ -36,6 +38,7 @@ import { obsidianTransport } from "./providers/transport";
 import { example, exampleSpan, explain, reply, type InteractionResult } from "./review/interactions";
 import type { RenderedPrompt } from "./review/prompt-builder";
 import { mergeReview, reviewPassage, voiceOf } from "./review/review";
+import { planReviewJobs } from "./review/review-orchestrator";
 import { sceneAround } from "./review/scene";
 import {
   ReviewScheduler,
@@ -91,6 +94,9 @@ export default class LyraPlugin extends Plugin {
   private scheduler!: ReviewScheduler;
   /** True while a review the author asked for is running. */
   private asking = false;
+  private manualReviewRun = 0;
+  private activeManualReview: { id: number; controller: AbortController; notice: Notice } | null = null;
+  private installedAssets = new Set<string>();
   /** She has been told to stop reading along for now. Not remembered across restarts. */
   private paused = false;
   /** The last thing sent to a provider, kept so the author can look at it. */
@@ -106,6 +112,7 @@ export default class LyraPlugin extends Plugin {
     if (loaded.migrated) await this.saveData(forSaving(this.prefs, this.secretStore()));
 
     const adapter = this.app.vault.adapter;
+    this.installedAssets = await this.readAssetManifest(adapter);
     const commentsPath = normalizePath(`${this.pluginDirectory()}/${COMMENTS_FILE_NAME}`);
     this.store = new NoteStore(
       {
@@ -115,6 +122,12 @@ export default class LyraPlugin extends Plugin {
       (problem) => this.logger.warn(problem),
     );
     await this.store.load();
+    const archive = this.store.archiveStats();
+    this.logger.debug("comment archive loaded", {
+      notes: archive.notes,
+      comments: archive.comments,
+      bytes: archive.bytes,
+    });
 
     this.providers = new ProviderRegistry(() => this.prefs.provider);
     const deps = (id: ProviderId) => ({
@@ -158,6 +171,7 @@ export default class LyraPlugin extends Plugin {
         );
         return this.providers.require(this.prefs.provider).replyToComment({ ...sent, maxTokens: DIGEST_TOKEN_BUDGET });
       },
+      modelId: () => `${this.prefs.provider}:${this.prefs.providers[this.prefs.provider].model}`,
       mayRead: () => this.prefs.story.keepNotes && !this.paused && this.hasKey(),
       onBusy: (busy) => this.companion.setActivity(busy ? "reading" : "idle"),
       onBacklog: (novel, unread) =>
@@ -170,6 +184,7 @@ export default class LyraPlugin extends Plugin {
     this.register(() => this.keeper.stop());
 
     this.talks = new TalkStore({
+      remember: () => this.prefs.story.rememberConversations,
       read: async (path) => ((await adapter.exists(path)) ? adapter.read(path) : null),
       write: async (path, text) => {
         await this.ensureFolder(path.slice(0, path.lastIndexOf("/")));
@@ -203,6 +218,10 @@ export default class LyraPlugin extends Plugin {
       activePath: () => this.activeFile()?.path ?? null,
       getComments: (filePath) => this.store.comments(filePath),
       assetUrl: (relativePath) => this.assetUrl(relativePath),
+      fallbackAssetUrl: (relativePath) => EMBEDDED_ASSETS[relativePath] ?? null,
+      renderMarkdown: (markdown, container) => {
+        void MarkdownRenderer.render(this.app, markdown, container, this.activeFile()?.path ?? "", this);
+      },
       showPassage: (filePath, line) => this.showPassage(filePath, line),
       setStatus: (filePath, commentId, status) => this.setStatus(filePath, commentId, status),
       eraseComments: (filePath) => {
@@ -228,6 +247,8 @@ export default class LyraPlugin extends Plugin {
       talk: {
         scope: () => this.talkScope(),
         history: (scope) => this.talks.load(scope.path),
+        memory: (scope) => this.talks.loadMemory(scope.memoryPath ?? scope.path),
+        saveMemory: (scope, text) => this.talks.saveMemory(scope.memoryPath ?? scope.path, text),
         say: (scope, text) => this.say(scope, text),
         clear: (scope) => this.talks.clear(scope.path),
       },
@@ -249,6 +270,7 @@ export default class LyraPlugin extends Plugin {
   }
 
   override onunload(): void {
+    this.activeManualReview?.controller.abort();
     void this.store?.flush();
   }
 
@@ -296,9 +318,12 @@ export default class LyraPlugin extends Plugin {
       new Notice(`Select the text you want ${name} to read.`);
       return;
     }
-    if (selection.length > MAX_SELECTION_CHARACTERS) {
+    const selectionLimit = this.prefs.manualReview.depth === "exhaustive"
+      ? MAX_EXHAUSTIVE_REVIEW_CHARACTERS
+      : MAX_SELECTION_CHARACTERS;
+    if (selection.length > selectionLimit) {
       new Notice(
-        `That is ${selection.length.toLocaleString()} characters. ${name} reads up to ${MAX_SELECTION_CHARACTERS.toLocaleString()} at a time.`,
+        `That is ${selection.length.toLocaleString()} characters. This review is limited to ${selectionLimit.toLocaleString()} characters.`,
       );
       return;
     }
@@ -325,9 +350,12 @@ export default class LyraPlugin extends Plugin {
 
     const editor = view.editor;
     const text = editor.getValue();
+    const sceneLimit = this.prefs.manualReview.depth === "exhaustive"
+      ? MAX_EXHAUSTIVE_REVIEW_CHARACTERS
+      : MAX_SELECTION_CHARACTERS;
     const scene = sceneAround(text, editor.posToOffset(editor.getCursor("head")), {
       ...this.bodyStart(file),
-      maxCharacters: MAX_SELECTION_CHARACTERS,
+      maxCharacters: sceneLimit,
     });
 
     if (scene.end <= scene.start) {
@@ -336,7 +364,7 @@ export default class LyraPlugin extends Plugin {
     }
     if (scene.truncated) {
       new Notice(
-        `This scene is long, so ${this.prefs.companion.name} is reading the ${MAX_SELECTION_CHARACTERS.toLocaleString()} characters around your cursor.`,
+        `This scene is long, so ${this.prefs.companion.name} is reading the ${sceneLimit.toLocaleString()} characters around your cursor.`,
         6000,
       );
     }
@@ -357,6 +385,14 @@ export default class LyraPlugin extends Plugin {
     if (this.asking) return;
 
     this.asking = true;
+    const runId = ++this.manualReviewRun;
+    const controller = new AbortController();
+    const plannedRequests = planReviewJobs(text, start, end, this.prefs.manualReview.depth).length;
+    const progress = new Notice(
+      `${this.prefs.companion.name} is preparing the review · ${plannedRequests} planned checks…`,
+      0,
+    );
+    this.activeManualReview = { id: runId, controller, notice: progress };
     this.scheduler.manualReviewStarted(file.path);
     this.companion.setActivity("reading");
 
@@ -369,18 +405,52 @@ export default class LyraPlugin extends Plugin {
           start,
           end,
           ...this.bodyStart(file),
+          headings: this.headings(file),
           existing: this.store.comments(file.path),
+          mode: this.prefs.manualReview.depth,
+          factCheck: this.prefs.manualReview.factCheck,
+          ...(this.prefs.manualReview.unlimitedFindings
+            ? { unlimitedFindings: true }
+            : { limit: this.prefs.manualReview.maximumFindings }),
+          onProgress: (state) => {
+            if (this.activeManualReview?.id !== runId) return;
+            progress.setMessage(
+              `${this.prefs.companion.name}: ${state.phase} · part ${state.part} of ${state.parts} · ${state.findings} found`,
+            );
+          },
           ...(await this.story(file, around(text, start, end))),
         },
         this.prefs,
         this.providers.require(this.prefs.provider),
+        controller.signal,
       );
 
+      if (controller.signal.aborted || this.activeManualReview?.id !== runId) return;
+      progress.setMessage(`${this.prefs.companion.name} is saving the review…`);
       this.remember(purpose, outcome.sent);
+      if (outcome.diagnostics !== undefined) {
+        this.logger.info("manual review finished", {
+          complete: outcome.complete ?? true,
+          requests: outcome.requests ?? 1,
+          accepted: outcome.diagnostics.accepted,
+          duplicate: outcome.diagnostics.duplicate,
+          unsupported: outcome.diagnostics.unsupported,
+          lowConfidence: outcome.diagnostics.lowConfidence,
+          settled: outcome.diagnostics.settled,
+          otherRejected: outcome.diagnostics.otherRejected,
+        });
+      }
       this.companion.setActivity("idle");
       this.applyReview(file.path, text, outcome, true);
+      if (!outcome.complete && outcome.warnings?.length) {
+        new Notice(`Review is partial. ${outcome.warnings.join(" ")}`, 10000);
+      }
       if (outcome.comments.length === 0) this.companion.reviewEnded(file.path, "nothing-found");
     } catch (error) {
+      if (controller.signal.aborted || this.activeManualReview?.id !== runId) {
+        this.companion.setActivity("idle");
+        return;
+      }
       const providerError = toProviderError(error);
       this.logger.warn("review failed", {
         code: providerError.code,
@@ -392,9 +462,22 @@ export default class LyraPlugin extends Plugin {
       new Notice(describeProviderError(providerError, this.prefs.provider), 8000);
       window.setTimeout(() => this.companion.setActivity("idle"), 6000);
     } finally {
+      progress.hide();
+      if (this.activeManualReview?.id === runId) this.activeManualReview = null;
       this.asking = false;
       this.scheduler.manualReviewFinished(file.path);
     }
+  }
+
+  private cancelManualReview(): void {
+    const active = this.activeManualReview;
+    if (active === null) {
+      new Notice("No manual review is running.");
+      return;
+    }
+
+    active.controller.abort();
+    active.notice.setMessage("Stopping. Any request already sent may still finish, but its result will be discarded.");
   }
 
   /** Reads a passage the author changed, on the scheduler's word. Silent throughout. */
@@ -414,6 +497,7 @@ export default class LyraPlugin extends Plugin {
           start: job.range.from,
           end: job.range.to,
           ...this.bodyStart(file),
+          headings: this.headings(file),
           existing: this.store.comments(file.path),
           limit: LIVE_FINDINGS,
           ...(await this.story(file, around(job.documentText, job.range.from, job.range.to))),
@@ -569,9 +653,22 @@ export default class LyraPlugin extends Plugin {
    */
   private talkScope(): TalkScope {
     const note = this.noteInHand();
-    if (note === null) return { path: normalizePath(`${this.pluginDirectory()}/talk.json`), title: "No note open" };
+    if (note === null) {
+      return {
+        path: normalizePath(`${this.pluginDirectory()}/talk.json`),
+        title: "No note open",
+        memoryPath: normalizePath(`${this.pluginDirectory()}/talk-memory.json`),
+      };
+    }
 
-    return { path: this.talkPathOf(note), title: note.split("/").pop()?.replace(/[.]md$/i, "") || "This note" };
+    const novel = this.keeper.novelOf(note);
+    return {
+      path: this.talkPathOf(note),
+      title: note.split("/").pop()?.replace(/[.]md$/i, "") || "This note",
+      memoryPath: novel === null
+        ? normalizePath(`${this.pluginDirectory()}/talk-memory.json`)
+        : normalizePath(`${notesFolderOf(novel)}/talks/memory.json`),
+    };
   }
 
   /** Where a note's conversation is kept: with her notes for a novel, beside the plugin otherwise. */
@@ -607,6 +704,7 @@ export default class LyraPlugin extends Plugin {
     const note = this.noteInHand();
     const novel = note === null ? null : this.keeper.novelOf(note);
     const history = await this.talks.load(scope.path);
+    const memory = await this.talks.loadMemory(scope.memoryPath ?? scope.path);
     const lookup = lookupText(history, text);
 
     // Seen from the brief, every chapter is an earlier one.
@@ -630,6 +728,7 @@ export default class LyraPlugin extends Plugin {
         ...(story.brief === undefined ? {} : { brief: story.brief }),
         ...(story.outline === undefined ? {} : { outline: story.outline }),
         notes: whole,
+        memory,
         ...this.openInFront(note),
         history,
         message: text,
@@ -759,6 +858,7 @@ export default class LyraPlugin extends Plugin {
       documentTitle: file.basename,
       documentText: text,
       ...this.bodyStart(file),
+      headings: this.headings(file),
     };
     const provider = this.providers.require(this.prefs.provider);
     const now = Date.now();
@@ -967,6 +1067,12 @@ export default class LyraPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "cancel-manual-review",
+      name: "Cancel the current manual review",
+      callback: () => this.cancelManualReview(),
+    });
+
+    this.addCommand({
       id: "open-brief",
       name: "Open the story brief for this folder",
       callback: () => void this.openBrief(),
@@ -1070,6 +1176,8 @@ export default class LyraPlugin extends Plugin {
     this.registerEvent(
       vault.on("rename", (file, oldPath) => {
         if (!(file instanceof TFile)) return;
+        this.keeper.invalidateChapter(oldPath);
+        this.keeper.invalidateChapter(file.path);
         this.scheduler.forget(oldPath);
         this.store.rename(oldPath, file.path);
         void this.moveTalk(oldPath, file.path)
@@ -1084,6 +1192,7 @@ export default class LyraPlugin extends Plugin {
     this.registerEvent(
       vault.on("delete", (file) => {
         if (!(file instanceof TFile)) return;
+        this.keeper.invalidateChapter(file.path);
         this.scheduler.forget(file.path);
         this.store.delete(file.path);
       }),
@@ -1102,6 +1211,14 @@ export default class LyraPlugin extends Plugin {
   private bodyStart(file: TFile): { bodyStart?: number } {
     const end = this.app.metadataCache.getFileCache(file)?.frontmatterPosition?.end.offset;
     return end === undefined ? {} : { bodyStart: end };
+  }
+
+  private headings(file: TFile): HeadingEntry[] {
+    return (this.app.metadataCache.getFileCache(file)?.headings ?? []).map((entry) => ({
+      level: entry.level,
+      heading: entry.heading,
+      offset: entry.position.start.offset,
+    }));
   }
 
   /** A note says `lyra: false` in its frontmatter to be left alone. */
@@ -1183,6 +1300,7 @@ export default class LyraPlugin extends Plugin {
   private editorCorner(): {
     right: number;
     bottom: number;
+    top: number;
     width: number;
   } | null {
     const area = this.standingArea();
@@ -1200,7 +1318,7 @@ export default class LyraPlugin extends Plugin {
       bottom = Math.max(bottom, page.clientHeight - bar.top);
     }
 
-    return { right: page.clientWidth - rect.right, bottom, width: rect.width };
+    return { right: page.clientWidth - rect.right, bottom, top: rect.top, width: rect.width };
   }
 
   /**
@@ -1229,9 +1347,36 @@ export default class LyraPlugin extends Plugin {
     this.register(() => observer.disconnect());
   }
 
-  /** Embedded image data for a scene asset. */
+  /** Resolves an installed scene asset without bundling it into main.js. */
   private assetUrl(relativePath: string): string | null {
-    return EMBEDDED_ASSETS[relativePath] ?? null;
+    if (!/^(?:frame\.webp|idle\/[a-z0-9_]+\.webp|in_progress\/[a-z0-9_]+\.webp)$/.test(relativePath)) {
+      return null;
+    }
+    if (!this.installedAssets.has(relativePath)) {
+      return EMBEDDED_ASSETS[relativePath] ?? EMBEDDED_ASSETS["idle/idle_serious.webp"] ?? null;
+    }
+    const path = normalizePath(`${this.pluginDirectory()}/assets/${relativePath}`);
+    return this.app.vault.adapter.getResourcePath(path);
+  }
+
+  private async readAssetManifest(adapter: typeof this.app.vault.adapter): Promise<Set<string>> {
+    const path = normalizePath(`${this.pluginDirectory()}/assets/manifest.json`);
+    try {
+      if (!(await adapter.exists(path))) return new Set();
+      const parsed: unknown = JSON.parse(await adapter.read(path));
+      if (typeof parsed !== "object" || parsed === null) return new Set();
+      const manifest = parsed as { version?: unknown; files?: unknown };
+      if (manifest.version !== 1 || !Array.isArray(manifest.files)) return new Set();
+      return new Set(
+        manifest.files.filter(
+          (entry): entry is string =>
+            typeof entry === "string" &&
+            /^(?:frame\.webp|idle\/[a-z0-9_]+\.webp|in_progress\/[a-z0-9_]+\.webp)$/.test(entry),
+        ),
+      );
+    } catch {
+      return new Set();
+    }
   }
 }
 

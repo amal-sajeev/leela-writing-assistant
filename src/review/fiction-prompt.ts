@@ -52,16 +52,21 @@ function systemPrompt(request: ReviewRequest, policy: SensitivityPolicy): string
       "Judge whether a choice achieves its apparent aim. Conventional prose is not the target.",
     ].join("\n"),
 
-    `SELECTIVITY: ${policy.instruction} Return at most ${policy.maxComments} finding` +
-      `${policy.maxComments === 1 ? "" : "s"}. Do not manufacture feedback to fill a quota. Most ` +
-      "passages a writer has just finished need nothing said about them: an empty list is the " +
-      "correct answer when nothing meaningful is supported by the text.",
+    `SELECTIVITY: ${policy.instruction} ` +
+      (policy.unlimitedFindings
+        ? "Return every distinct, well-supported finding that fits this bounded passage. The output budget is finite, so keep each finding short. Most passages need nothing said about them."
+        : `Return at most ${policy.maxComments} finding${policy.maxComments === 1 ? "" : "s"}. Do not manufacture feedback to fill a quota. Most passages need nothing said about them: an empty list is correct when nothing meaningful is supported by the text.`),
 
     `CATEGORIES you may use:\n${reviewer.enabledCategories
       .map((category) => `- ${category}: ${CATEGORY_GUIDE[category]}`)
       .join("\n")}`,
 
+    ...(request.analysisTechniques === undefined || request.analysisTechniques.length === 0
+      ? []
+      : [`SELECTED ANALYSIS CHECKS (use only where the passage supports them):\n${request.analysisTechniques.map((item) => `- ${item}`).join("\n")}`]),
+
     "ACTIVE REACTION CATALOG (choose one ID for each comment based on its tone; these are expression names only):\n" + reactionCatalogText(),
+    "Match the expression to Lyra's tone, not the finding's severity. Use serious or mildly concerned for ordinary critique; reserve shocked, laughing, and celebratory expressions for clear emotional cues.",
 
     [
       "RULES:",
@@ -116,7 +121,7 @@ function userPrompt(request: ReviewRequest): string {
     parts.push(
       section(
         "CANON NOTES (what is established about the story so far: the author's own notes, notes kept from earlier chapters, which name the chapter each fact comes from, and under a chapter's own path a stretch of that earlier chapter exactly as written; not to be reviewed)",
-        canon.map((entry) => `[${entry.filePath}]\n${entry.excerpt.trim()}`).join("\n\n"),
+        canon.map((entry) => `${contextLabel(entry.filePath, entry.heading, entry.start, entry.end)}\n${entry.excerpt.trim()}`).join("\n\n"),
       ),
     );
   }
@@ -163,4 +168,10 @@ function hasText(value: string | undefined): value is string {
 
 function section(label: string, body: string): string {
   return `${label}:\n${body}`;
+}
+
+function contextLabel(filePath: string, heading?: string, start?: number, end?: number): string {
+  const section = heading === undefined ? "" : ` > ${heading}`;
+  const range = start === undefined || end === undefined ? "" : `, body chars ${start}-${end}`;
+  return `[${filePath}${section}${range}]`;
 }

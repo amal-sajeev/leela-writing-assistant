@@ -13,8 +13,8 @@ import {
   observationTokenBudget,
   REPLY_TOKEN_BUDGET,
   reviewTokenBudget,
-  THINKING_HEADROOM_TOKENS,
 } from "./budgets";
+import { outputTokenBudget } from "./provider-capabilities";
 import { rotationSkipRetry, withApiKeyFallback } from "./key-fallback";
 import { sendJson, type HttpTransport } from "./http";
 import { isProviderError, ProviderError } from "./provider-errors";
@@ -102,17 +102,17 @@ export class OpenAIProvider implements AIProvider {
 
   async replyToComment(input: CommentReplyInput, signal?: AbortSignal): Promise<string> {
     return this.withKeys(async (config) => {
-      const { data } = await this.post(
+      const { data, requestId } = await this.post(
         config,
         {
           messages: messages(input.systemPrompt, input.userPrompt),
           temperature: REPLY_TEMPERATURE,
-          max_completion_tokens: withHeadroom(input.maxTokens ?? REPLY_TOKEN_BUDGET),
+          max_completion_tokens: outputTokenBudget("openai", config.model, input.maxTokens ?? REPLY_TOKEN_BUDGET),
         },
         signal,
       );
 
-      const text = extractMessageText(messageContent(data)).trim();
+      const text = extractMessageText(messageContent(data, requestId)).trim();
       if (text.length === 0) {
         throw new ProviderError("invalid_response", "Provider returned an empty reply", false);
       }
@@ -123,19 +123,19 @@ export class OpenAIProvider implements AIProvider {
   async generateFix(input: FixRequestInput, signal?: AbortSignal): Promise<SuggestedFix> {
     return this.withKeys((config) =>
       withSchemaFallback(async (mode) => {
-        const { data } = await this.post(
+        const { data, requestId } = await this.post(
           config,
           {
             messages: messages(input.systemPrompt, input.userPrompt),
             temperature: REPLY_TEMPERATURE,
-            max_completion_tokens: withHeadroom(FIX_TOKEN_BUDGET),
+            max_completion_tokens: outputTokenBudget("openai", config.model, FIX_TOKEN_BUDGET),
             response_format: responseFormat(mode, "suggested_fix", suggestedFixJsonSchema()),
           },
           signal,
         );
 
         return {
-          ...parseSuggestedFix(extractMessageText(messageContent(data))),
+          ...parseSuggestedFix(extractMessageText(messageContent(data, requestId))),
           generatedAt: Date.now(),
         };
       }, this.fallbackOptions(config)),
@@ -162,14 +162,19 @@ export class OpenAIProvider implements AIProvider {
       {
         messages: messages(input.systemPrompt, input.userPrompt),
         temperature: REVIEW_TEMPERATURE,
-        max_completion_tokens: withHeadroom(reviewTokenBudget(input.maxComments)),
+        max_completion_tokens: outputTokenBudget("openai", config.model, reviewTokenBudget(input.maxComments)),
         response_format: responseFormat(mode, "review", reviewJsonSchema()),
       },
       signal,
     );
 
-    const comments = parseReviewComments(extractMessageText(messageContent(data)));
+    const comments = parseReviewComments(extractMessageText(messageContent(data, requestId)));
     const usage = extractUsage(data.usage);
+    const finishReason = data.choices?.[0]?.finish_reason;
+    const completion = {
+      requestId,
+      ...(typeof finishReason === "string" ? { finishReason } : {}),
+    };
 
     this.deps.logger?.debug("review parsed", {
       requestId,
@@ -179,7 +184,7 @@ export class OpenAIProvider implements AIProvider {
       outputTokens: usage?.outputTokens,
     });
 
-    return usage === undefined ? { comments } : { comments, usage };
+    return { comments, completion, ...(usage === undefined ? {} : { usage }) };
   }
 
   private async requestObservations(
@@ -193,7 +198,7 @@ export class OpenAIProvider implements AIProvider {
       {
         messages: messages(input.systemPrompt, input.userPrompt),
         temperature: REVIEW_TEMPERATURE,
-        max_completion_tokens: withHeadroom(observationTokenBudget(input.maxObservations)),
+        max_completion_tokens: outputTokenBudget("openai", config.model, observationTokenBudget(input.maxObservations)),
         response_format: responseFormat(
           mode,
           "document_observations",
@@ -203,8 +208,13 @@ export class OpenAIProvider implements AIProvider {
       signal,
     );
 
-    const observations = parseObservations(extractMessageText(messageContent(data)));
+    const observations = parseObservations(extractMessageText(messageContent(data, requestId)));
     const usage = extractUsage(data.usage);
+    const finishReason = data.choices?.[0]?.finish_reason;
+    const completion = {
+      requestId,
+      ...(typeof finishReason === "string" ? { finishReason } : {}),
+    };
 
     this.deps.logger?.debug("observations parsed", {
       requestId,
@@ -214,7 +224,7 @@ export class OpenAIProvider implements AIProvider {
       outputTokens: usage?.outputTokens,
     });
 
-    return usage === undefined ? { observations } : { observations, usage };
+    return { observations, completion, ...(usage === undefined ? {} : { usage }) };
   }
 
   /**
@@ -338,10 +348,6 @@ function responseFormat(
   };
 }
 
-function withHeadroom(budget: number): number {
-  return budget + THINKING_HEADROOM_TOKENS;
-}
-
 /** A 400 that is about the `temperature` we sent rather than anything else. */
 function isTemperatureRejection(error: unknown): boolean {
   return isProviderError(error) && error.status === 400 && /temperature/i.test(error.message);
@@ -351,11 +357,14 @@ function isTemperatureRejection(error: unknown): boolean {
  * The reply's content, once it is known to be a whole one: a reply cut off at
  * the token limit or declined is said to be that, not left to fail as bad JSON.
  */
-function messageContent(data: OpenAIChatResponse): unknown {
+function messageContent(data: OpenAIChatResponse, requestId?: string): unknown {
   const choice = data.choices?.[0];
 
   if (choice?.finish_reason === "length") {
-    throw new ProviderError("invalid_response", "The reply was cut off at the token limit", false);
+    throw new ProviderError("output_truncated", "The reply was cut off at the token limit", false, undefined, undefined, {
+      finishReason: "length",
+      ...(requestId === undefined ? {} : { requestId }),
+    });
   }
   if (typeof choice?.message?.refusal === "string" && choice.message.refusal.length > 0) {
     throw new ProviderError("provider_error", "The model declined this request", false);

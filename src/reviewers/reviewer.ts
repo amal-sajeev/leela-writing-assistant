@@ -42,6 +42,7 @@ export interface SensitivityPolicy {
   instruction: string;
   minimumConfidence: number;
   maxComments: number;
+  unlimitedFindings?: boolean;
 }
 
 export function sensitivityInstruction(value: number): string {

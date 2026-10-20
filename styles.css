@@ -56,6 +56,8 @@
   gap: 6px;
   box-sizing: border-box;
   width: var(--lyra-w);
+  max-height: calc(100vh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - 2 * var(--lyra-margin));
+  max-height: calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - 2 * var(--lyra-margin));
   /* Left to herself she keeps inside the area she stands in. */
   max-width: calc(var(--lyra-room, 100vw) - 2 * var(--lyra-margin));
   /* How wide she really is: the width asked for, or less where there is no room for it. */
@@ -475,6 +477,7 @@
 .lyra__box {
   position: relative;
   display: none;
+  min-height: 0;
   flex-direction: column;
   gap: 6px;
   width: 100%;
@@ -595,6 +598,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
   max-height: min(40vh, 22rem);
   /*
    * Never taller than the room above her: the app's height less her frame, the
@@ -603,8 +607,9 @@
   max-height: min(
     40vh,
     22rem,
-    max(5em, calc(100vh - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px))
+    max(5em, calc(100vh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px))
   );
+  max-height: min(40vh, 22rem, max(5em, calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px)));
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--lyra-cream-dim) transparent;
@@ -615,8 +620,9 @@
   max-height: 70vh;
   max-height: max(
     5em,
-    calc(100vh - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px)
+    calc(100vh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px)
   );
+  max-height: max(5em, calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px));
 }
 
 /* What she says. When it points at a passage it is a button: clicking it shows the passage. */
@@ -703,6 +709,43 @@
 .lyra__said {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.lyra__said--markdown {
+  min-width: 0;
+  white-space: normal;
+}
+
+.lyra__said--markdown :is(p, ul, ol, blockquote, pre, table, h1, h2, h3, h4, h5, h6) {
+  margin-block: 0;
+}
+
+.lyra__said--markdown > :first-child {
+  margin-block-start: 0;
+}
+
+.lyra__said--markdown > :last-child {
+  margin-block-end: 0;
+}
+
+.lyra__said--markdown :is(ul, ol) {
+  padding-inline-start: 1.25em;
+}
+
+.lyra__said--markdown li + li {
+  margin-block-start: 0.25em;
+}
+
+.lyra__said--markdown blockquote {
+  padding-inline-start: 0.65em;
+  border-inline-start: 2px solid var(--lyra-mauve);
+  color: var(--lyra-cream-dim);
+}
+
+.lyra__said--markdown pre,
+.lyra__said--markdown table {
+  max-width: 100%;
+  overflow: auto;
 }
 
 /* One way it could go: boxed off, because it is her wording and not the author's. */
@@ -1164,4 +1207,36 @@
 
 .lyra__talkbox .lyra__actions {
   justify-content: flex-end;
+}
+
+.lyra__talkmemory[hidden] {
+  display: none;
+}
+
+.lyra__talkmemory {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--lyra-gold);
+}
+
+.lyra__talkmemory-head {
+  color: var(--lyra-gold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lyra__talkmemory-help {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.lyra .lyra__talkmemory-input {
+  min-height: 5em;
+  max-height: 12em;
+  overflow: auto;
+  resize: vertical;
+  font-size: 12px;
 }

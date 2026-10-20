@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { AnthropicProvider } from "../src/providers/anthropic-provider";
-import { THINKING_HEADROOM_TOKENS } from "../src/providers/budgets";
 import type { HttpRequest, HttpResponse, HttpTransport } from "../src/providers/http";
 import type { ProviderRequestConfig } from "../src/providers/provider";
 import { isProviderError } from "../src/providers/provider-errors";
@@ -121,7 +120,7 @@ describe("AnthropicProvider request shape", () => {
     for (const request of requests) {
       expect(typeof bodyOf(request).max_tokens).toBe("number");
     }
-    expect(bodyOf(requests[0]!).max_tokens).toBe(1400 + THINKING_HEADROOM_TOKENS);
+    expect(bodyOf(requests[0]!).max_tokens).toBe(1400);
   });
 
   it("asks for structured output through output_config", async () => {
@@ -188,7 +187,7 @@ describe("AnthropicProvider structured output fallback", () => {
     ]);
 
     await expect(provider.review(REVIEW_INPUT)).rejects.toMatchObject({
-      code: "invalid_response",
+      code: "output_truncated",
       message: expect.stringContaining("cut off"),
     });
     await expect(provider.review(REVIEW_INPUT)).rejects.toMatchObject({ code: "provider_error" });
@@ -221,7 +220,7 @@ describe("AnthropicProvider structured output fallback", () => {
     expect(result.comments).toEqual([]);
     expect(requests).toHaveLength(2);
     expect(bodyOf(requests[1]!).output_config).toBeUndefined();
-    expect(bodyOf(requests[1]!).max_tokens).toBe(1150 + THINKING_HEADROOM_TOKENS);
+    expect(bodyOf(requests[1]!).max_tokens).toBe(1150);
   });
 
   it("does not retry a failure that has nothing to do with the schema", async () => {

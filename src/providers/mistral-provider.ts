@@ -14,6 +14,7 @@ import {
   REPLY_TOKEN_BUDGET,
   reviewTokenBudget,
 } from "./budgets";
+import { outputTokenBudget } from "./provider-capabilities";
 import { rotationSkipRetry, withApiKeyFallback } from "./key-fallback";
 import { sendJson, type HttpTransport } from "./http";
 import { ProviderError } from "./provider-errors";
@@ -98,16 +99,16 @@ export class MistralProvider implements AIProvider {
 
   async replyToComment(input: CommentReplyInput, signal?: AbortSignal): Promise<string> {
     return this.withKeys(async (config) => {
-      const { data } = await sendJson<MistralChatResponse>(
+      const { data, requestId } = await sendJson<MistralChatResponse>(
         this.chatRequest(config, {
           messages: messages(input.systemPrompt, input.userPrompt),
           temperature: REPLY_TEMPERATURE,
-          max_tokens: input.maxTokens ?? REPLY_TOKEN_BUDGET,
+          max_tokens: outputTokenBudget("mistral", config.model, input.maxTokens ?? REPLY_TOKEN_BUDGET),
         }),
         this.sendOptions(config, signal),
       );
 
-      const text = extractMessageText(messageContent(data)).trim();
+      const text = extractMessageText(messageContent(data, requestId)).trim();
       if (text.length === 0) {
         throw new ProviderError("invalid_response", "Provider returned an empty reply", false);
       }
@@ -118,18 +119,18 @@ export class MistralProvider implements AIProvider {
   async generateFix(input: FixRequestInput, signal?: AbortSignal): Promise<SuggestedFix> {
     return this.withKeys((config) =>
       withSchemaFallback(async (mode) => {
-        const { data } = await sendJson<MistralChatResponse>(
+        const { data, requestId } = await sendJson<MistralChatResponse>(
           this.chatRequest(config, {
             messages: messages(input.systemPrompt, input.userPrompt),
             temperature: REPLY_TEMPERATURE,
-            max_tokens: FIX_TOKEN_BUDGET,
+            max_tokens: outputTokenBudget("mistral", config.model, FIX_TOKEN_BUDGET),
             response_format: responseFormat(mode, "suggested_fix", suggestedFixJsonSchema()),
           }),
           this.sendOptions(config, signal),
         );
 
         return {
-          ...parseSuggestedFix(extractMessageText(messageContent(data))),
+          ...parseSuggestedFix(extractMessageText(messageContent(data, requestId))),
           generatedAt: Date.now(),
         };
       }, this.fallbackOptions(config)),
@@ -155,7 +156,7 @@ export class MistralProvider implements AIProvider {
       this.chatRequest(config, {
         messages: messages(input.systemPrompt, input.userPrompt),
         temperature: REVIEW_TEMPERATURE,
-        max_tokens: observationTokenBudget(input.maxObservations),
+        max_tokens: outputTokenBudget("mistral", config.model, observationTokenBudget(input.maxObservations)),
         response_format: responseFormat(
           mode,
           "document_observations",
@@ -165,8 +166,13 @@ export class MistralProvider implements AIProvider {
       this.sendOptions(config, signal),
     );
 
-    const observations = parseObservations(extractMessageText(messageContent(data)));
+    const observations = parseObservations(extractMessageText(messageContent(data, requestId)));
     const usage = extractUsage(data.usage);
+    const finishReason = data.choices?.[0]?.finish_reason;
+    const completion = {
+      requestId,
+      ...(typeof finishReason === "string" ? { finishReason } : {}),
+    };
 
     this.deps.logger?.debug("observations parsed", {
       requestId,
@@ -176,7 +182,7 @@ export class MistralProvider implements AIProvider {
       outputTokens: usage?.outputTokens,
     });
 
-    return usage === undefined ? { observations } : { observations, usage };
+    return { observations, completion, ...(usage === undefined ? {} : { usage }) };
   }
 
   private async requestReview(
@@ -189,14 +195,19 @@ export class MistralProvider implements AIProvider {
       this.chatRequest(config, {
         messages: messages(input.systemPrompt, input.userPrompt),
         temperature: REVIEW_TEMPERATURE,
-        max_tokens: reviewTokenBudget(input.maxComments),
+        max_tokens: outputTokenBudget("mistral", config.model, reviewTokenBudget(input.maxComments)),
         response_format: responseFormat(mode, "review", reviewJsonSchema()),
       }),
       this.sendOptions(config, signal),
     );
 
-    const comments = parseReviewComments(extractMessageText(messageContent(data)));
+    const comments = parseReviewComments(extractMessageText(messageContent(data, requestId)));
     const usage = extractUsage(data.usage);
+    const finishReason = data.choices?.[0]?.finish_reason;
+    const completion = {
+      requestId,
+      ...(typeof finishReason === "string" ? { finishReason } : {}),
+    };
 
     this.deps.logger?.debug("review parsed", {
       requestId,
@@ -206,7 +217,7 @@ export class MistralProvider implements AIProvider {
       outputTokens: usage?.outputTokens,
     });
 
-    return usage === undefined ? { comments } : { comments, usage };
+    return { comments, completion, ...(usage === undefined ? {} : { usage }) };
   }
 
   private chatRequest(config: ProviderRequestConfig, body: Record<string, unknown>) {
@@ -300,12 +311,15 @@ function responseFormat(
   };
 }
 
-function messageContent(data: MistralChatResponse): unknown {
+function messageContent(data: MistralChatResponse, requestId?: string): unknown {
   const choice = data.choices?.[0];
 
   // Said plainly rather than left to fail as JSON that would not parse.
   if (choice?.finish_reason === "length") {
-    throw new ProviderError("invalid_response", "The reply was cut off at the token limit", false);
+    throw new ProviderError("output_truncated", "The reply was cut off at the token limit", false, undefined, undefined, {
+      finishReason: "length",
+      ...(requestId === undefined ? {} : { requestId }),
+    });
   }
 
   return choice?.message?.content;

@@ -1,0 +1,108 @@
+[
+  {
+    "id": "contradictory-door-action",
+    "documentType": "fiction",
+    "text": "Rin locked the door from inside. A moment later, the stranger opened it from the hallway without a key.",
+    "issues": [
+      {
+        "quote": "the stranger opened it from the hallway without a key",
+        "category": "continuity",
+        "severity": "high",
+        "reason": "The door was locked from inside, but no way to unlock it is given."
+      }
+    ]
+  },
+  {
+    "id": "survey-arithmetic",
+    "documentType": "essay",
+    "text": "The survey asked 12 people. Eleven preferred the design. The report says 98 percent preferred it.",
+    "issues": [
+      {
+        "quote": "98 percent preferred it",
+        "category": "consistency",
+        "severity": "high",
+        "reason": "Eleven of twelve is not 98 percent."
+      }
+    ]
+  },
+  {
+    "id": "unsupported-universal-claim",
+    "documentType": "essay",
+    "text": "This method always works, according to several studies.",
+    "issues": [
+      {
+        "quote": "always works",
+        "category": "evidence",
+        "severity": "medium",
+        "reason": "An absolute claim is attributed to unnamed studies."
+      }
+    ]
+  },
+  {
+    "id": "limited-pov-leak",
+    "documentType": "fiction",
+    "context": "Close third person from Mara's point of view.",
+    "text": "Mara watched Tomas leave. He decided he would never return, though she could not see his face.",
+    "issues": [
+      {
+        "quote": "He decided he would never return",
+        "category": "pov",
+        "severity": "medium",
+        "reason": "The narration reports Tomas's private decision from Mara's limited viewpoint."
+      }
+    ]
+  },
+  {
+    "id": "citation-needed",
+    "documentType": "essay",
+    "context": "A research essay making claims that readers must be able to verify.",
+    "text": "The Old Canal Act was passed in 1987 and cut city flooding by half.",
+    "issues": [
+      {
+        "quote": "cut city flooding by half",
+        "category": "evidence",
+        "severity": "medium",
+        "reason": "The quantitative causal claim needs a traceable source."
+      }
+    ]
+  },
+  {
+    "id": "dialogue-voice-and-fragment",
+    "documentType": "fiction",
+    "context": "Nell speaks in clipped fragments; that voice is deliberate.",
+    "text": "'Train's late,' Nell said. 'Again.' Ivo checked the clock. 'Then we'll wait.'",
+    "issues": []
+  },
+  {
+    "id": "unreliable-narrator",
+    "documentType": "fiction",
+    "context": "The first-person narrator is established as a liar; the contradiction is intentional.",
+    "text": "I have never lied to you. I have never told the truth, either.",
+    "issues": []
+  },
+  {
+    "id": "purposeful-ambiguity",
+    "documentType": "fiction",
+    "context": "The sentence is an intentional double meaning, established by the next line.",
+    "text": "Nell watched the light go out. 'I knew it would,' she said, meaning the lamp and the hope he had carried.",
+    "issues": []
+  },
+  {
+    "id": "intentional-fragment",
+    "documentType": "fiction",
+    "text": "No answer. Just rain on the station roof.",
+    "issues": []
+  },
+  {
+    "id": "settled-continuity-point",
+    "documentType": "fiction",
+    "text": "Rin locked the door from inside. A moment later, the stranger opened it from the hallway without a key.",
+    "issues": [],
+    "settled": [
+      {
+        "quote": "the stranger opened it from the hallway without a key",
+        "category": "continuity"
+      }
+    ]
+  }
+]

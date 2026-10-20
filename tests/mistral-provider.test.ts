@@ -50,7 +50,10 @@ function chatResponse(content: unknown, usage?: unknown): HttpResponse {
 }
 
 function reviewResponse(comments: unknown[] = [COMMENT], usage?: unknown): HttpResponse {
-  return chatResponse(JSON.stringify({ comments }), usage);
+  return response(200, {
+    choices: [{ message: { content: JSON.stringify({ comments }) }, finish_reason: "stop" }],
+    ...(usage === undefined ? {} : { usage }),
+  });
 }
 
 /** Replays the given responses in order and records every request. */
@@ -152,11 +155,15 @@ describe("MistralProvider results", () => {
     expect(result.comments).toHaveLength(1);
     expect(result.comments[0]?.quote).toBe("always more accurate");
     expect(result.usage).toEqual({ inputTokens: 900, outputTokens: 60 });
+    expect(result.completion).toMatchObject({ finishReason: "stop", requestId: expect.any(String) });
   });
 
   it("treats an empty review as a normal result", async () => {
     const { provider } = createProvider([reviewResponse([])]);
-    await expect(provider.review(REVIEW_INPUT)).resolves.toEqual({ comments: [] });
+    await expect(provider.review(REVIEW_INPUT)).resolves.toMatchObject({
+      comments: [],
+      completion: { finishReason: "stop", requestId: expect.any(String) },
+    });
   });
 
   it("rejects content that is not the agreed JSON", async () => {
@@ -167,6 +174,17 @@ describe("MistralProvider results", () => {
   it("rejects a response with no message at all", async () => {
     const { provider } = createProvider([response(200, { choices: [] })]);
     await expectProviderError(() => provider.review(REVIEW_INPUT), "invalid_response");
+  });
+
+  it("reports token-limit termination separately with safe metadata", async () => {
+    const { provider } = createProvider([response(200, {
+      choices: [{ message: { content: '{"comments": [' }, finish_reason: "length" }],
+    })]);
+
+    await expect(provider.review(REVIEW_INPUT)).rejects.toMatchObject({
+      code: "output_truncated",
+      completion: { finishReason: "length", requestId: expect.any(String) },
+    });
   });
 });
 
@@ -284,7 +302,10 @@ describe("MistralProvider whole-note observations", () => {
 
   it("treats a note with nothing global wrong as a normal result", async () => {
     const { provider } = createProvider([observationResponse([])]);
-    await expect(provider.reviewDocument(DOCUMENT_INPUT)).resolves.toEqual({ observations: [] });
+    await expect(provider.reviewDocument(DOCUMENT_INPUT)).resolves.toMatchObject({
+      observations: [],
+      completion: { requestId: expect.any(String) },
+    });
   });
 
   it("falls back to JSON mode when the model rejects the strict schema", async () => {

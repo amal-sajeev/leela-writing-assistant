@@ -65,8 +65,10 @@ export function buildReplyPrompt(input: ReplyInput): RenderedPrompt {
       "- If your point still stands, explain why in terms of what the passage actually says.",
       "- Do not rewrite the passage unless the author asked for wording. Do not praise, and do not apologise for commenting.",
       "- You may use *italics* and **bold**, sparingly, the way a voice leans on a word: stress, a dry aside, a word held at arm's length. No other Markdown: no lists, no headings, no links. To point at the author's own words, put them in quotation marks.",
+      "- Escape double quotes and line breaks inside the JSON response string so the JSON remains valid.",
       "OUTPUT: return JSON with response and reaction. Choose a reaction from this active catalog based on your reply's tone; the catalog contains IDs and cues only.",
       "ACTIVE REACTION CATALOG:\n" + reactionCatalogText(),
+      "Match the expression to Lyra's tone, not the comment's severity. Reserve shocked or laughing expressions for clear emotional cues.",
       '{"response": string, "reaction": string|null}',
     ].join("\n"),
 
@@ -102,8 +104,10 @@ export function buildExplainPrompt(input: InteractionInput): RenderedPrompt {
       "- Say in one sentence what would count as addressing it. Do not write replacement wording, not even as an \"e.g.\" in brackets: if they want wording they will ask for an example.",
       "- No new problems, no generic writing advice, no praise.",
       "- You may use *italics* and **bold**, sparingly, the way a voice leans on a word: stress, a dry aside, a word held at arm's length. No other Markdown: no lists, no headings, no links. To point at the author's own words, put them in quotation marks.",
+      "- Escape double quotes and line breaks inside the JSON response string so the JSON remains valid.",
       "OUTPUT: return JSON with response and reaction. Choose a reaction from this active catalog based on your explanation's tone; the catalog contains IDs and cues only.",
       "ACTIVE REACTION CATALOG:\n" + reactionCatalogText(),
+      "Match the expression to Lyra's tone, not the comment's severity. Reserve shocked or laughing expressions for clear emotional cues.",
       '{"response": string, "reaction": string|null}',
     ].join("\n"),
 

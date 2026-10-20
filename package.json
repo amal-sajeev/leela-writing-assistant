@@ -1,19 +1,26 @@
 {
   "name": "lyra-companion",
-  "version": "0.1.0",
-  "description": "Get story-aware AI feedback on your writing, right inside Obsidian.",
+  "version": "0.1.1",
+  "description": "Story-aware AI reviews, continuity checks, and in-character chat for writers.",
+  "author": "Amal Sajeev <amsajeev333@gmail.com>",
   "private": true,
+  "engines": {
+    "node": "22.16.x"
+  },
+  "packageManager": "npm@10.9.2",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "npm run typecheck && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "eval:offline": "node scripts/review-eval.mjs --self-test",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "install-plugin": "node scripts/vault-install.mjs",
-    "verify": "npm run typecheck && npm run lint && npm test && node esbuild.config.mjs production"
+    "assets:embed": "node scripts/optimize-embedded-assets.mjs",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run eval:offline && node esbuild.config.mjs production && node scripts/check-production-build.mjs"
   },
   "keywords": [
     "obsidian",

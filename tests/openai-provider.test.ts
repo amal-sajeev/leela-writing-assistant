@@ -147,6 +147,13 @@ describe("OpenAIProvider request shape", () => {
     expect(bodyOf(requests[0]!).max_completion_tokens).toBe(1400 + THINKING_HEADROOM_TOKENS);
   });
 
+  it("does not reserve reasoning tokens for a non-reasoning model", async () => {
+    const { provider, requests } = createProvider([reviewResponse()], { model: "gpt-4.1" });
+    await provider.review({ ...REVIEW_INPUT, maxComments: 4 });
+
+    expect(bodyOf(requests[0]!).max_completion_tokens).toBe(1400);
+  });
+
   it("uses a configured base URL", async () => {
     const { provider, requests } = createProvider([reviewResponse()], {
       baseUrl: "https://proxy.example.com/openai/",
@@ -154,6 +161,17 @@ describe("OpenAIProvider request shape", () => {
     await provider.review(REVIEW_INPUT);
 
     expect(requests[0]?.url).toBe("https://proxy.example.com/openai/chat/completions");
+  });
+
+  it("reports token-limit termination separately with safe metadata", async () => {
+    const { provider } = createProvider([response(200, {
+      choices: [{ message: { content: '{"comments": [' }, finish_reason: "length" }],
+    })]);
+
+    await expect(provider.review(REVIEW_INPUT)).rejects.toMatchObject({
+      code: "output_truncated",
+      completion: { finishReason: "length", requestId: expect.any(String) },
+    });
   });
 });
 

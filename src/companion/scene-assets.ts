@@ -1,5 +1,5 @@
 import type { CompanionMood, Scene } from "./lines";
-import { ACTIVE_REACTION_CATALOG, ACTIVE_REACTION_IDS } from "../types";
+import { ACTIVE_REACTION_CATALOG, ACTIVE_REACTION_IDS, type ActiveReaction } from "../types";
 
 export type SceneMode = "active" | "passive";
 
@@ -17,11 +17,11 @@ export interface LyraSceneAsset {
 }
 
 const ASSETS = {
-  idle_happy_resting: { id: "idle_happy_resting", asset: "idle/idle_happy_resting.webp" },
-  idle_happy: { id: "idle_happy", asset: "idle/idle_happy.webp" },
-  idle_concerned: { id: "idle_concerned", asset: "idle/idle_concerned.webp" },
   idle_embarassed: { id: "idle_embarassed", asset: "idle/idle_embarassed.webp" },
   idle_goodbye: { id: "idle_goodbye", asset: "idle/idle_goodbye.webp" },
+  idle_happy: { id: "idle_happy", asset: "idle/idle_happy.webp" },
+  idle_happy_resting: { id: "idle_happy_resting", asset: "idle/idle_happy_resting.webp" },
+  idle_concerned: { id: "idle_concerned", asset: "idle/idle_concerned.webp" },
   idle_laughing: { id: "idle_laughing", asset: "idle/idle_laughing.webp" },
   idle_sad: { id: "idle_sad", asset: "idle/idle_sad.webp" },
   idle_serious: { id: "idle_serious", asset: "idle/idle_serious.webp" },
@@ -51,16 +51,7 @@ const PASSIVE_ACTIVITY_SCENES: readonly LyraSceneAsset[] = [
   "passive_sorting_cds",
 ].map((id) => ({ id, asset: `idle/${id}.webp` }));
 
-export type LyraSceneAssetId = keyof typeof ASSETS;
-
-/** Casual idle expressions; reaction and greeting poses stay in the active set. */
 export const PASSIVE_SCENES: readonly LyraSceneAsset[] = [
-  ASSETS.idle_happy_resting,
-  ASSETS.idle_happy,
-  ASSETS.idle_embarassed,
-  ASSETS.idle_sad,
-  ASSETS.idle_sulking,
-  ASSETS.idle_teasing,
   ASSETS.passive_listening_to_music,
   ...PASSIVE_ACTIVITY_SCENES,
 ];
@@ -73,37 +64,37 @@ export function reactionCatalogText(): string {
   return ACTIVE_REACTION_IDS.map((id) => `- ${id}: ${ACTIVE_REACTION_CATALOG[id]}`).join("\n");
 }
 
-const ACTIVE_BY_MOOD: Record<CompanionMood, readonly LyraSceneAssetId[]> = {
-  resting: ["idle_serious", "idle_concerned"],
-  waiting: ["idle_serious", "idle_concerned"],
-  reading: ["idle_serious", "idle_concerned"],
-  pointed: ["idle_concerned", "idle_serious", "idle_shocked_sad"],
-  asking: ["idle_concerned", "idle_serious", "idle_shocked_sad"],
-  answering: ["idle_serious", "idle_concerned"],
-  surprised: ["idle_shocked_sad", "idle_concerned", "idle_shocked_happy"],
-  happy: ["idle_shocked_happy", "idle_laughing", "idle_welcome"],
-  excited: ["idle_goodbye", "idle_welcome", "idle_laughing"],
-  amused: ["idle_laughing", "idle_shocked_happy"],
-  sad: ["idle_concerned", "idle_shocked_sad"],
-  greeting: ["idle_welcome", "idle_goodbye"],
+const ACTIVE_BY_MOOD: Record<CompanionMood, readonly ActiveReaction[]> = {
+  resting: ["idle_happy_resting", "idle_happy", "idle_serious", "idle_concerned"],
+  waiting: ["idle_happy_resting", "idle_serious"],
+  reading: ["idle_happy_resting", "idle_serious"],
+  pointed: ["idle_concerned", "idle_serious"],
+  asking: ["idle_concerned", "idle_serious", "idle_teasing"],
+  answering: ["idle_serious", "idle_concerned", "idle_embarassed"],
+  surprised: ["idle_concerned", "idle_serious"],
+  happy: ["idle_happy", "idle_happy_resting", "idle_shocked_happy", "idle_laughing", "idle_welcome"],
+  excited: ["idle_happy", "idle_welcome", "idle_laughing"],
+  amused: ["idle_teasing", "idle_laughing", "idle_embarassed", "idle_sulking"],
+  sad: ["idle_sad", "idle_shocked_sad", "idle_concerned"],
+  greeting: ["idle_welcome", "idle_happy_resting", "idle_happy"],
 };
 
-const ACTIVE_BY_TALK_SCENE: Record<Scene, readonly LyraSceneAssetId[]> = {
-  listening: ["idle_serious", "idle_concerned"],
-  sipping: ["idle_serious", "idle_laughing"],
-  window: ["idle_serious", "idle_concerned", "idle_welcome"],
-  watering: ["idle_serious", "idle_concerned"],
-  strolling: ["idle_serious", "idle_concerned", "idle_goodbye"],
-  writing: ["idle_serious", "idle_concerned"],
-  reading: ["idle_serious", "idle_concerned"],
-  typing: ["idle_serious", "idle_concerned"],
-  shelf: ["idle_concerned", "idle_serious", "idle_shocked_sad"],
-  pondering: ["idle_concerned", "idle_serious", "idle_shocked_sad"],
-  winking: ["idle_shocked_happy", "idle_laughing"],
+const ACTIVE_BY_TALK_SCENE: Record<Scene, readonly ActiveReaction[]> = {
+  listening: ["idle_serious", "idle_concerned", "idle_happy_resting"],
+  sipping: ["idle_happy_resting", "idle_happy", "idle_serious"],
+  window: ["idle_serious", "idle_concerned", "idle_happy_resting"],
+  watering: ["idle_happy_resting", "idle_serious"],
+  strolling: ["idle_happy_resting", "idle_happy", "idle_serious"],
+  writing: ["idle_serious", "idle_concerned", "idle_happy_resting"],
+  reading: ["idle_serious", "idle_concerned", "idle_happy_resting"],
+  typing: ["idle_serious", "idle_concerned", "idle_happy_resting"],
+  shelf: ["idle_concerned", "idle_serious", "idle_happy_resting"],
+  pondering: ["idle_concerned", "idle_serious", "idle_embarassed"],
+  winking: ["idle_teasing", "idle_embarassed", "idle_shocked_happy"],
   laughing: ["idle_laughing", "idle_shocked_happy"],
-  stretching: ["idle_goodbye", "idle_serious"],
-  tired: ["idle_shocked_sad", "idle_concerned"],
-  waving: ["idle_welcome", "idle_goodbye"],
+  stretching: ["idle_happy_resting", "idle_happy", "idle_goodbye"],
+  tired: ["idle_happy_resting", "idle_concerned", "idle_serious"],
+  waving: ["idle_welcome", "idle_happy"],
 };
 
 export function sceneMode(activity: SceneActivity): SceneMode {

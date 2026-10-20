@@ -1,0 +1,46 @@
+[
+  {
+    "caseId": "contradictory-door-action",
+    "comments": [
+      {
+        "quote": "the stranger opened it from the hallway without a key",
+        "category": "continuity",
+        "severity": "high",
+        "body": "The lock has no way to open from the hall."
+      }
+    ]
+  },
+  {
+    "caseId": "survey-arithmetic",
+    "comments": [
+      {
+        "quote": "98 percent preferred it",
+        "category": "consistency",
+        "severity": "high",
+        "body": "Eleven of twelve is about 92 percent."
+      }
+    ]
+  },
+  {
+    "caseId": "unsupported-universal-claim",
+    "comments": [
+      {
+        "quote": "always works",
+        "category": "evidence",
+        "severity": "medium",
+        "body": "Name the studies or soften the absolute claim."
+      }
+    ]
+  },
+  { "caseId": "limited-pov-leak", "comments": [
+    { "quote": "He decided he would never return", "category": "pov", "severity": "medium" }
+  ] },
+  { "caseId": "citation-needed", "comments": [
+    { "quote": "cut city flooding by half", "category": "evidence", "severity": "medium" }
+  ] },
+  { "caseId": "dialogue-voice-and-fragment", "comments": [] },
+  { "caseId": "unreliable-narrator", "comments": [] },
+  { "caseId": "purposeful-ambiguity", "comments": [] },
+  { "caseId": "intentional-fragment", "comments": [] },
+  { "caseId": "settled-continuity-point", "comments": [] }
+]

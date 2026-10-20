@@ -205,6 +205,59 @@ export class LyraSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Manual review depth")
+      .setDesc("Quick is one pass. Standard adds a focused pass for longer selections. Exhaustive checks overlapping sections for structure, continuity, clarity, and prose.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("quick", "Quick read")
+          .addOption("standard", "Editorial review")
+          .addOption("exhaustive", "Exhaustive review")
+          .setValue(this.settings.manualReview.depth)
+          .onChange((value) => {
+            void this.plugin.updateSettings((draft) => {
+              draft.manualReview.depth = value === "exhaustive" || value === "standard" ? value : "quick";
+            });
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Unlimited findings in manual reviews")
+      .setDesc("No findings-count cap. Reviews still have request, context, and time limits. Live review stays at one finding per pause.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.manualReview.unlimitedFindings).onChange((value) => {
+          void this.plugin.updateSettings((draft) => {
+            draft.manualReview.unlimitedFindings = value;
+          });
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Manual finding limit")
+      .setDesc("Used when unlimited findings are off.")
+      .addSlider((slider) =>
+        slider
+          .setLimits(1, 20, 1)
+          .setValue(this.settings.manualReview.maximumFindings)
+          .setDynamicTooltip()
+          .onChange((value) => {
+            void this.plugin.updateSettings((draft) => {
+              draft.manualReview.maximumFindings = Math.round(value);
+            });
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Fact-check claims during manual reviews")
+      .setDesc("For essay reviews, flags internal contradictions and claims that need sources. Lyra does not fetch the web or call a claim false from memory.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.manualReview.factCheck).onChange((value) => {
+          void this.plugin.updateSettings((draft) => {
+            draft.manualReview.factCheck = value;
+          });
+        }),
+      );
+
+    new Setting(containerEl)
       .setName("Pause before she reads")
       .setDesc("Seconds without typing before a changed passage is read.")
       .addSlider((slider) =>
@@ -301,6 +354,17 @@ export class LyraSettingTab extends PluginSettingTab {
         toggle.setValue(this.settings.story.keepNotes).onChange((value) => {
           void this.plugin.updateSettings((draft) => {
             draft.story.keepNotes = value;
+          });
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Remember chats between sessions")
+      .setDesc("Off, saved chats and saved memory stop being sent. New messages and memory edits stay in memory until Obsidian closes; saved files remain until you clear them in the chat.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.story.rememberConversations).onChange((value) => {
+          void this.plugin.updateSettings((draft) => {
+            draft.story.rememberConversations = value;
           });
         }),
       );

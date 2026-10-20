@@ -3,87 +3,88 @@ import { hashText } from "../utils/hash";
 import { terms } from "../utils/relevance";
 import { keepHead } from "../utils/text";
 
-/**
- * Finds the places in earlier chapters that a passage has most to do with, so
- * she can be shown what was actually written and not only her note of it.
- *
- * It is a search by shared words over text already on the machine. Nothing is
- * sent to find them, and nothing is kept on disk: each chapter is cut into
- * stretches of a paragraph or so the first time it is needed, and that is
- * remembered only until the chapter changes or Obsidian closes.
- */
-
-/** Stretches of earlier chapters sent with one review, and how long each may be. */
 const MOST_PASSAGES = 3;
 const PASSAGE_CHARACTERS = 800;
-
-/** Short paragraphs, such as lines of dialogue, are read together up to about this length. */
 const STRETCH_CHARACTERS = 400;
-
-/**
- * A word tells two stretches apart only when few stretches have it. A name on
- * every page says nothing about which page is meant.
- */
-const DISTINCTIVE_SHARE = 0.2;
-
-/** Distinctive words a stretch must share with the passage to be worth showing. */
 const MINIMUM_SHARED = 2;
 
 interface Stretch {
   text: string;
-  words: Set<string>;
+  words: string[];
+  heading?: string;
+  start: number;
+  end: number;
 }
 
 export interface ChapterText {
   path: string;
-  /** The chapter's text, without frontmatter. */
   text: string;
 }
 
 export class ChapterSearch {
   private readonly cut = new Map<string, { hash: string; stretches: Stretch[] }>();
 
-  /** The stretches of these chapters nearest the passage, best first. Empty when none is near. */
   find(chapters: readonly ChapterText[], passage: string): RetrievedContext[] {
     const wanted = new Set(terms(passage));
     if (wanted.size === 0 || chapters.length === 0) return [];
 
-    const all = chapters.flatMap((chapter) =>
-      this.stretchesOf(chapter).map((stretch) => ({ path: chapter.path, stretch })),
+    const all = chapters.flatMap((chapter, chapterIndex) =>
+      this.stretchesOf(chapter).map((stretch) => ({
+        path: chapter.path,
+        chapterIndex,
+        chapterCount: chapters.length,
+        titleWords: new Set(terms(pathTitle(chapter.path))),
+        stretch,
+      })),
     );
     if (all.length === 0) return [];
 
-    const inHowMany = new Map<string, number>();
+    const documentFrequency = new Map<string, number>();
     for (const { stretch } of all) {
-      for (const word of stretch.words) if (wanted.has(word)) inHowMany.set(word, (inHowMany.get(word) ?? 0) + 1);
+      for (const word of new Set(stretch.words)) {
+        if (wanted.has(word)) documentFrequency.set(word, (documentFrequency.get(word) ?? 0) + 1);
+      }
     }
 
-    const distinctiveBelow = Math.max(2, all.length * DISTINCTIVE_SHARE);
-
     return all
-      .map(({ path, stretch }) => {
-        let score = 0;
+      .map((entry) => {
+        const counts = new Map<string, number>();
+        for (const word of entry.stretch.words) counts.set(word, (counts.get(word) ?? 0) + 1);
+        let lexical = 0;
         let distinctive = 0;
-        for (const word of stretch.words) {
-          const count = inHowMany.get(word);
-          if (count === undefined) continue;
-          score += Math.log(1 + all.length / count);
-          if (count <= distinctiveBelow) distinctive += 1;
+        for (const [word, count] of counts) {
+          const frequency = documentFrequency.get(word);
+          if (frequency === undefined) continue;
+          const idf = Math.log(1 + (all.length - frequency + 0.5) / (frequency + 0.5));
+          lexical += idf * ((count * 2.2) / (count + 1.2));
+          if (frequency <= Math.max(2, all.length * 0.2)) distinctive += 1;
         }
-        return { path, stretch, score, distinctive };
+
+        const headingWords = new Set(terms(entry.stretch.heading ?? ""));
+        const titleMatches = overlapCount(wanted, entry.titleWords);
+        const headingMatches = overlapCount(wanted, headingWords);
+        const entityMatches = sharedEntities(passage, entry.stretch.text);
+        const recency = entry.chapterCount <= 1 ? 0 : entry.chapterIndex / (entry.chapterCount - 1);
+        const score = lexical + titleMatches * 1.2 + headingMatches * 1.6 + entityMatches * 2 + recency * 0.25;
+
+        return { ...entry, score, distinctive, titleMatches, headingMatches, entityMatches };
       })
-      .filter((entry) => entry.distinctive >= MINIMUM_SHARED)
-      .sort((left, right) => right.score - left.score)
+      .filter((entry) =>
+        entry.distinctive >= MINIMUM_SHARED || entry.titleMatches > 0 || entry.headingMatches > 0 || entry.entityMatches > 0,
+      )
+      .sort((left, right) => right.score - left.score || right.chapterIndex - left.chapterIndex)
       .slice(0, MOST_PASSAGES)
       .map((entry) => ({
         filePath: entry.path,
         excerpt: keepHead(entry.stretch.text, PASSAGE_CHARACTERS),
         score: entry.score,
         reason: "lexical" as const,
+        start: entry.stretch.start,
+        end: entry.stretch.end,
+        ...(entry.stretch.heading === undefined ? {} : { heading: entry.stretch.heading }),
       }));
   }
 
-  /** Lets go of chapters that are no longer wanted, such as on unload. */
   clear(): void {
     this.cut.clear();
   }
@@ -95,21 +96,45 @@ export class ChapterSearch {
 
     const stretches: Stretch[] = [];
     let current = "";
+    let currentStart = 0;
+    let currentEnd = 0;
+    let activeHeading: string | undefined;
 
     const close = (): void => {
-      if (current.length > 0) stretches.push({ text: current, words: new Set(terms(current)) });
+      if (current.length > 0) {
+        stretches.push({
+          text: current,
+          words: terms(current),
+          start: currentStart,
+          end: currentEnd,
+          ...(activeHeading === undefined ? {} : { heading: activeHeading }),
+        });
+      }
       current = "";
     };
 
-    for (const raw of chapter.text.split(/\n+/)) {
-      const paragraph = raw.trim();
-      // A heading or a scene break ends a stretch: what follows is another moment.
-      if (paragraph.length === 0 || /^(#{1,6}\s|\*\s?\*\s?\*|---+$|___+$)/.test(paragraph)) {
+    let offset = 0;
+    for (const match of chapter.text.matchAll(/[^\n]*(?:\n|$)/g)) {
+      const raw = match[0];
+      if (raw.length === 0) break;
+      const line = raw.replace(/[\r\n]+$/, "");
+      const trimmed = line.trim();
+      const lineStart = offset;
+      offset += raw.length;
+
+      if (trimmed.length === 0 || /^(\*\s?\*\s?\*|---+$|___+$)/.test(trimmed)) {
         close();
         continue;
       }
+      if (/^#{1,6}\s/.test(trimmed)) {
+        close();
+        activeHeading = trimmed.replace(/^#{1,6}\s+/, "").trim();
+        continue;
+      }
 
-      current = current.length === 0 ? paragraph : `${current}\n${paragraph}`;
+      if (current.length === 0) currentStart = lineStart + line.indexOf(trimmed);
+      current = current.length === 0 ? trimmed : `${current}\n${trimmed}`;
+      currentEnd = lineStart + line.lastIndexOf(trimmed) + trimmed.length;
       if (current.length >= STRETCH_CHARACTERS) close();
     }
     close();
@@ -117,4 +142,25 @@ export class ChapterSearch {
     this.cut.set(chapter.path, { hash, stretches });
     return stretches;
   }
+}
+
+function pathTitle(path: string): string {
+  const name = path.split("/").at(-1) ?? path;
+  return name.replace(/\.md$/i, "").replace(/[-_]+/g, " ");
+}
+
+function overlapCount(left: ReadonlySet<string>, right: ReadonlySet<string>): number {
+  let count = 0;
+  for (const word of left) if (right.has(word)) count += 1;
+  return count;
+}
+
+function sharedEntities(left: string, right: string): number {
+  const entities = (text: string): Set<string> =>
+    new Set(
+      [...text.matchAll(/\b[A-Z][\p{L}\p{N}'-]*(?:\s+[A-Z][\p{L}\p{N}'-]*)*/gu)]
+        .map((match) => match[0].toLowerCase())
+        .filter((value) => value.trim().split(/\s+/).length > 1),
+    );
+  return overlapCount(entities(left), entities(right));
 }

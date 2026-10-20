@@ -1,4 +1,4 @@
-import { access, copyFile, mkdir, readFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -72,7 +72,65 @@ export async function installBuild({ quiet = false } = {}) {
     await copyFile(source, path.join(pluginDir, artifact));
   }
 
+  const sourceAssets = path.join(repoRoot, "assets");
+  const targetAssets = path.join(pluginDir, "assets");
+  const files = (await listFiles(sourceAssets)).sort();
+  const previous = await readAssetManifest(path.join(targetAssets, "manifest.json"));
+
+  await copyTree(sourceAssets, targetAssets);
+  const current = new Set(files);
+  for (const stale of previous) {
+    if (current.has(stale)) continue;
+    const target = path.resolve(targetAssets, ...stale.split("/"));
+    if (!target.startsWith(`${path.resolve(targetAssets)}${path.sep}`)) continue;
+    try {
+      await unlink(target);
+    } catch {
+      // A missing stale file is already gone.
+    }
+  }
+  await writeFile(path.join(targetAssets, "manifest.json"), JSON.stringify({ version: 1, files }, null, 2));
+
   return pluginDir;
+}
+
+async function copyTree(sourceDir, targetDir) {
+  await mkdir(targetDir, { recursive: true });
+  for (const entry of await readdir(sourceDir, { withFileTypes: true })) {
+    const source = path.join(sourceDir, entry.name);
+    const target = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      await copyTree(source, target);
+    } else if (entry.isFile()) {
+      await copyFile(source, target);
+    }
+  }
+}
+
+async function listFiles(sourceDir, relative = "") {
+  const output = [];
+  for (const entry of await readdir(path.join(sourceDir, relative), { withFileTypes: true })) {
+    const child = relative.length === 0 ? entry.name : path.join(relative, entry.name);
+    if (entry.isDirectory()) output.push(...(await listFiles(sourceDir, child)));
+    else if (entry.isFile()) output.push(child.split(path.sep).join("/"));
+  }
+  return output;
+}
+
+async function readAssetManifest(filePath) {
+  try {
+    const parsed = JSON.parse(await readFile(filePath, "utf8"));
+    if (parsed?.version !== 1 || !Array.isArray(parsed.files)) return [];
+    return parsed.files.filter(isSafeAssetPath);
+  } catch {
+    return [];
+  }
+}
+
+function isSafeAssetPath(value) {
+  return typeof value === "string" &&
+    /^(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/.test(value) &&
+    !value.split("/").some((segment) => segment === "." || segment === "..");
 }
 
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

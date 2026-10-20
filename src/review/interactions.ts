@@ -1,11 +1,10 @@
 import { resolveAnchor } from "../comments/anchor-resolver";
-import { withoutDashes } from "../utils/text";
-import { buildSelectionContext } from "../context/context-builder";
+import { buildSelectionContext, type HeadingEntry } from "../context/context-builder";
 import { redactKnownSecrets } from "../privacy/redaction";
 import type { AIProvider } from "../providers/provider";
 import { toProviderError, type ProviderError } from "../providers/provider-errors";
 import { providerApiKeys, type LyraSettings } from "../settings/settings";
-import { isActiveReaction, type ActiveReaction, type ReviewComment, type SuggestedFix } from "../types";
+import type { ReviewComment, SuggestedFix } from "../types";
 import { normalizeForComparison } from "../utils/text";
 import {
   buildExplainPrompt,
@@ -15,6 +14,8 @@ import {
 } from "./interaction-prompts";
 import type { RenderedPrompt } from "./prompt-builder";
 import { persona } from "./review";
+import { parseReviewerReply, type ReviewerReply } from "./reply";
+export { parseReviewerReply } from "./reply";
 
 /**
  * Talking back to her about one comment: asking why, disagreeing, or asking to
@@ -37,27 +38,7 @@ export interface InteractionRequest {
   /** The note as its editor has it now. */
   documentText: string;
   bodyStart?: number;
-}
-
-export interface ReviewerReply { text: string; reaction?: ActiveReaction }
-
-/** Accept the new JSON envelope while preserving legacy plain-text replies. */
-export function parseReviewerReply(raw: string): ReviewerReply {
-  const trimmed = raw.trim();
-  try {
-    const from = trimmed.indexOf("{");
-    const to = trimmed.lastIndexOf("}");
-    if (from >= 0 && to > from) {
-      const parsed: unknown = JSON.parse(trimmed.slice(from, to + 1));
-      if (typeof parsed === "object" && parsed !== null) {
-        const record = parsed as { response?: unknown; reaction?: unknown };
-        if (typeof record.response === "string" && record.response.trim()) {
-          return { text: withoutDashes(record.response), ...(isActiveReaction(record.reaction) ? { reaction: record.reaction } : {}) };
-        }
-      }
-    }
-  } catch { /* Fall back to the complete legacy text. */ }
-  return { text: withoutDashes(raw) };
+  headings?: readonly HeadingEntry[];
 }
 
 /** She unpacks a comment: which words create the problem, and what would count as dealing with it. */
@@ -149,6 +130,7 @@ async function converse<T>(
     selectionStart: resolution.start,
     selectionEnd: resolution.end,
     ...(request.bodyStart === undefined ? {} : { bodyStart: request.bodyStart }),
+    ...(request.headings === undefined ? {} : { headings: request.headings }),
     budget: {
       beforeCharacters: settings.context.beforeCharacters,
       afterCharacters: settings.context.afterCharacters,
@@ -164,6 +146,7 @@ async function converse<T>(
     passage: context.changedText,
     beforeContext: context.beforeContext,
     afterContext: context.afterContext,
+    ...(context.headingPath.length === 0 ? {} : { headingPath: context.headingPath }),
   });
 
   // A key pasted into a note is ordinary text, and must not travel with it.

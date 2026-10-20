@@ -39,6 +39,8 @@ export interface TalkScope {
   path: string;
   /** What it is about, for the heading over where the author types. */
   title: string;
+  /** Shared memory path, usually one file per novel. */
+  memoryPath?: string;
 }
 
 export type TalkOutcome = { ok: true; reply: TalkMessage } | { ok: false; reason: string };
@@ -47,6 +49,8 @@ export type TalkOutcome = { ok: true; reply: TalkMessage } | { ok: false; reason
 export interface TalkHost {
   scope(): TalkScope;
   history(scope: TalkScope): Promise<TalkMessage[]>;
+  memory(scope: TalkScope): Promise<string>;
+  saveMemory(scope: TalkScope, text: string): Promise<void>;
   say(scope: TalkScope, text: string): Promise<TalkOutcome>;
   clear(scope: TalkScope): Promise<void>;
 }
@@ -57,6 +61,7 @@ export const TALK_TOKEN_BUDGET = 1_200;
 /** How much of the conversation so far travels with the next thing said. */
 const HISTORY_CHARACTERS = 9_000;
 const HISTORY_MESSAGES = 24;
+const MEMORY_CHARACTERS = 3_000;
 
 /** How much of what is open in front of the author travels. */
 const OPEN_NOTE_CHARACTERS = 5_000;
@@ -74,6 +79,8 @@ export interface TalkInput {
   outline?: string;
   /** Her notes, the author's canon, and stretches of the chapters, that bear on what was said. */
   notes: readonly RetrievedContext[];
+  /** Short, author-edited memory with explicit labels and sources. */
+  memory?: string;
   /** The note the author has open, and where in it they are. */
   open?: { title: string; text: string; selected: boolean };
   history: readonly TalkMessage[];
@@ -95,6 +102,7 @@ export function buildTalkPrompt(input: TalkInput): RenderedPrompt {
       "- What you know of the story is what is under the headings in the message: the brief, the plan and outline, your notes on the chapters, stretches of the chapters themselves, and what is open in front of them. Rest what you say about the story on those, and name the chapter when it matters.",
       "- If you have not been shown something, say you have not read it. Never make up what happens in the story, and never pass off a guess as something on the page.",
       "- The author's plan and corrections outrank your own notes. The story is theirs: where it goes is their call, and you may argue with it.",
+      "- AUTHOR-EDITED MEMORY uses the labels Preferences, Decisions, Rejected, Tentative, and Facts. Keep those distinctions. Rejected ideas stay rejected; tentative ideas are not canon. Use only stated sources for story facts.",
       "- You may think aloud about where the story could go, and offer ideas as options that are theirs to take or leave. Do not write passages of the story for them unless they ask you for wording.",
       "- Remember what was said earlier in CONVERSATION SO FAR, and do not repeat yourself.",
       "- You may use *italics* and **bold**, sparingly, the way a voice leans on a word: stress, a dry aside, a word held at arm's length. No other Markdown: no lists, no headings. If there are options, say them in a sentence.",
@@ -108,6 +116,7 @@ export function buildTalkPrompt(input: TalkInput): RenderedPrompt {
       `- Give each line a \`mood\`, your expression as you say it: ${TALK_MOODS.join(", ")}. Change it only when your expression would change.`,
       "- Give each line a reaction ID from the ACTIVE REACTION CATALOG that fits its emotional tone. Choose only from that list.",
       "ACTIVE REACTION CATALOG (IDs and expression cues only):\n" + reactionCatalogText(),
+      "Match the expression to the emotion of this line. Reserve shocked or laughing expressions for clear emotional cues.",
       "OUTPUT: a single JSON object and nothing else. No prose around it, no code fences.",
       '{"lines": [{"say": string, "mood": string, "reaction": string|null}]}',
     ].join("\n"),
@@ -122,12 +131,19 @@ export function buildTalkPrompt(input: TalkInput): RenderedPrompt {
   if (input.novelTitle !== undefined) parts.push(section("NOVEL", input.novelTitle));
   if (hasText(input.brief)) parts.push(section("STORY BRIEF (written by the author)", input.brief.trim()));
   if (hasText(input.outline)) parts.push(section("STORY OUTLINE", input.outline.trim()));
+  if (hasText(input.memory)) {
+    parts.push(section("AUTHOR-EDITED MEMORY (labels and sources are the author's)", keepHead(input.memory.trim(), MEMORY_CHARACTERS)));
+  }
 
   if (input.notes.length > 0) {
     parts.push(
       section(
         "WHAT YOU HAVE ON THE STORY (the author's notes, your own notes on the chapters, and under a chapter's own path a stretch of that chapter as written)",
-        input.notes.map((entry) => `[${entry.filePath}]\n${entry.excerpt.trim()}`).join("\n\n"),
+        input.notes.map((entry) => {
+          const heading = entry.heading === undefined ? "" : ` > ${entry.heading}`;
+          const range = entry.start === undefined || entry.end === undefined ? "" : `, body chars ${entry.start}-${entry.end}`;
+          return `[${entry.filePath}${heading}${range}]\n${entry.excerpt.trim()}`;
+        }).join("\n\n"),
       ),
     );
   }
@@ -306,6 +322,7 @@ function byLength(text: string): string[] {
 export interface TalkStoreDeps {
   read(path: string): Promise<string | null>;
   write(path: string, text: string): Promise<void>;
+  remember?(): boolean;
 }
 
 /** Messages kept in one conversation. The oldest go first. */
@@ -318,10 +335,17 @@ export const MAX_KEPT_MESSAGES = 400;
  */
 export class TalkStore {
   private readonly loaded = new Map<string, TalkMessage[]>();
+  private readonly sessionOnly = new Set<string>();
+  private readonly memories = new Map<string, string>();
+  private readonly sessionMemoryOnly = new Set<string>();
 
   constructor(private readonly deps: TalkStoreDeps) {}
 
   async load(path: string): Promise<TalkMessage[]> {
+    if (this.deps.remember?.() === false && !this.sessionOnly.has(path)) {
+      this.loaded.set(path, []);
+      return [];
+    }
     const held = this.loaded.get(path);
     if (held !== undefined) return held;
 
@@ -342,16 +366,53 @@ export class TalkStore {
   async add(path: string, ...messages: TalkMessage[]): Promise<void> {
     const all = [...(await this.load(path)), ...messages].slice(-MAX_KEPT_MESSAGES);
     this.loaded.set(path, all);
-    await this.deps.write(path, JSON.stringify({ version: 1, messages: all }));
+    if (this.deps.remember?.() === false) this.sessionOnly.add(path);
+    else {
+      this.sessionOnly.delete(path);
+      await this.deps.write(path, JSON.stringify({ version: 1, messages: all }));
+    }
+  }
+
+  async loadMemory(path: string): Promise<string> {
+    if (this.deps.remember?.() === false && !this.sessionMemoryOnly.has(path)) return "";
+    const held = this.memories.get(path);
+    if (held !== undefined) return held;
+
+    let memory = "";
+    try {
+      const raw = await this.deps.read(path);
+      const parsed: unknown = raw === null ? null : JSON.parse(raw);
+      const value = (parsed as { memory?: unknown } | null)?.memory;
+      if (typeof value === "string") memory = keepHead(value.trim(), MEMORY_CHARACTERS);
+    } catch {
+      // Bad memory starts empty.
+    }
+
+    this.memories.set(path, memory);
+    return memory;
+  }
+
+  async saveMemory(path: string, value: string): Promise<void> {
+    const memory = keepHead(value.trim(), MEMORY_CHARACTERS);
+    this.memories.set(path, memory);
+    if (this.deps.remember?.() === false) this.sessionMemoryOnly.add(path);
+    else {
+      this.sessionMemoryOnly.delete(path);
+      await this.deps.write(path, JSON.stringify({ version: 1, memory }));
+    }
   }
 
   /** Lets go of a conversation whose file has gone elsewhere. */
   forget(path: string): void {
     this.loaded.delete(path);
+    this.sessionOnly.delete(path);
+    this.memories.delete(path);
+    this.sessionMemoryOnly.delete(path);
   }
 
   async clear(path: string): Promise<void> {
     this.loaded.set(path, []);
+    this.sessionOnly.delete(path);
     await this.deps.write(path, JSON.stringify({ version: 1, messages: [] }));
   }
 }

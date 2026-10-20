@@ -141,6 +141,22 @@ describe("settings", () => {
     expect(normalizeSettings({ companion: { width: 99999 } }).companion.width).toBe(1200);
   });
 
+  it("migrates manual review controls without changing older preferences", () => {
+    const settings = normalizeSettings({
+      persona: { mode: "essay" },
+      manualReview: { depth: "exhaustive", unlimitedFindings: true, maximumFindings: 200 },
+    });
+
+    expect(settings.manualReview).toEqual({
+      depth: "exhaustive",
+      unlimitedFindings: true,
+      maximumFindings: 20,
+      factCheck: false,
+    });
+    expect(settings.persona.mode).toBe("essay");
+    expect(normalizeSettings({}).manualReview).toEqual(DEFAULT_SETTINGS.manualReview);
+  });
+
   it("give her the strength category only when praise is on", () => {
     const quiet = structuredClone(DEFAULT_SETTINGS);
     quiet.persona.praise = false;
@@ -299,6 +315,16 @@ describe("the saved comments", () => {
 
     expect(store.comments(FILE).map((entry) => entry.id)).toEqual(["c1"]);
   });
+
+  it("reports archive size without exposing comment text", async () => {
+    const store = new NoteStore(memory());
+    await store.load();
+    store.set(FILE, [comment()]);
+
+    expect(store.archiveStats()).toMatchObject({ notes: 1, comments: 1 });
+    expect(store.archiveStats().bytes).toBeGreaterThan(0);
+    await store.flush();
+  });
 });
 
 /**
@@ -430,6 +456,7 @@ describe("her window", () => {
   let handedBack: number;
   let activeFile: string;
   let talked: Array<{ who: "author" | "lyra"; text: string; at: number }>;
+  let talkMemory: string;
   let talkFails: boolean;
   let talkAnswer: Array<{ text: string; mood?: "amused" | "thinking" | "surprised"; reaction?: ActiveReaction }> | null;
 
@@ -461,6 +488,11 @@ describe("her window", () => {
     talk: {
       scope: () => ({ path: "Novel/Lyra notes/talk.json", title: "Novel" }),
       history: () => Promise.resolve([...talked]),
+      memory: () => Promise.resolve(talkMemory),
+      saveMemory: (_scope: unknown, text: string) => {
+        talkMemory = text;
+        return Promise.resolve();
+      },
       say: (_scope: unknown, text: string) => {
         if (talkFails) return Promise.resolve({ ok: false as const, reason: "No key." });
         const reply =
@@ -523,6 +555,7 @@ describe("her window", () => {
     handedBack = 0;
     activeFile = FILE;
     talked = [];
+    talkMemory = "";
     talkFails = false;
     talkAnswer = null;
     settings = structuredClone(DEFAULT_SETTINGS);
@@ -576,6 +609,7 @@ describe("her window", () => {
     expect(Object.fromEntries(root().placed)).toEqual({
       "--lyra-right": "300px",
       "--lyra-bottom": "0px",
+      "--lyra-top": "0px",
       "--lyra-room": "1286px",
       "--lyra-reach": "1586px",
     });
@@ -1074,6 +1108,28 @@ describe("her window", () => {
       await settle();
       expect(talked).toEqual([]);
       expect(dialog()!.content()).toContain("What's on your mind?");
+    });
+
+    it("lets the author inspect, edit, save, and clear memory", async () => {
+      talkMemory = "Rejected [Chapter 2]: the ghost is not Mara's sister.";
+      companion.enterTalk();
+      await settle();
+
+      key("Memory").fire("click");
+      await settle();
+      const input = root().find("lyra__talkmemory-input")!;
+      expect(input.value).toBe(talkMemory);
+
+      input.value = "Decision [Chapter 2]: the ghost is Mara's aunt.";
+      input.fire("input");
+      key("Save memory").fire("click");
+      await settle();
+      expect(talkMemory).toBe("Decision [Chapter 2]: the ghost is Mara's aunt.");
+
+      key("Clear").fire("click");
+      key("Clear it?").fire("click");
+      await settle();
+      expect(talkMemory).toBe("");
     });
 
     it("is put away by Esc, and hands the cursor back to the note", async () => {

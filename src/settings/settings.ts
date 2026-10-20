@@ -1,5 +1,5 @@
 import { DEFAULT_MODELS, DEFAULT_REQUEST_TIMEOUT_MS } from "../constants";
-import { COMMENT_CATEGORIES, PROVIDER_IDS, type CommentCategory, type ProviderId } from "../types";
+import { COMMENT_CATEGORIES, PROVIDER_IDS, REVIEW_DEPTHS, type CommentCategory, type ProviderId, type ReviewDepth } from "../types";
 import { clampFraction, clampInt } from "../utils/number";
 
 /**
@@ -62,6 +62,13 @@ export interface LyraSettings {
     reviewOnSave: boolean;
   };
 
+  manualReview: {
+    depth: ReviewDepth;
+    unlimitedFindings: boolean;
+    maximumFindings: number;
+    factCheck: boolean;
+  };
+
   context: {
     beforeCharacters: number;
     afterCharacters: number;
@@ -108,6 +115,8 @@ export interface LyraSettings {
   story: {
     /** Whether she reads chapters as they change and keeps notes on the story. */
     keepNotes: boolean;
+    /** Whether story chats are loaded from and saved between sessions. */
+    rememberConversations: boolean;
   };
 
   /** Whether the passages she commented on are underlined in the note. */
@@ -172,6 +181,13 @@ export const DEFAULT_SETTINGS: LyraSettings = {
     reviewOnSave: false,
   },
 
+  manualReview: {
+    depth: "quick",
+    unlimitedFindings: false,
+    maximumFindings: 12,
+    factCheck: false,
+  },
+
   context: {
     beforeCharacters: 2500,
     afterCharacters: 1500,
@@ -200,6 +216,7 @@ export const DEFAULT_SETTINGS: LyraSettings = {
 
   story: {
     keepNotes: true,
+    rememberConversations: true,
   },
 
   underline: true,
@@ -261,6 +278,7 @@ export function normalizeSettings(raw: unknown): LyraSettings {
 
   const providers = asRecord(input.providers);
   const liveReview = asRecord(input.liveReview);
+  const manualReview = asRecord(input.manualReview);
   const persona = asRecord(input.persona);
   const companion = asRecord(input.companion);
 
@@ -286,6 +304,15 @@ export function normalizeSettings(raw: unknown): LyraSettings {
         SETTING_LIMITS.debounceMs.max,
         defaults.liveReview.debounceMs,
       ),
+    },
+
+    manualReview: {
+      depth: REVIEW_DEPTHS.includes(manualReview.depth as ReviewDepth)
+        ? (manualReview.depth as ReviewDepth)
+        : defaults.manualReview.depth,
+      unlimitedFindings: asBoolean(manualReview.unlimitedFindings, defaults.manualReview.unlimitedFindings),
+      maximumFindings: clampInt(manualReview.maximumFindings, 1, 20, defaults.manualReview.maximumFindings),
+      factCheck: asBoolean(manualReview.factCheck, defaults.manualReview.factCheck),
     },
 
     persona: {
@@ -340,6 +367,7 @@ export function normalizeSettings(raw: unknown): LyraSettings {
 
     story: {
       keepNotes: asBoolean(asRecord(input.story).keepNotes, defaults.story.keepNotes),
+      rememberConversations: asBoolean(asRecord(input.story).rememberConversations, defaults.story.rememberConversations),
     },
 
     underline: asBoolean(input.underline, defaults.underline),

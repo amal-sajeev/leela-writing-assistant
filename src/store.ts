@@ -16,6 +16,12 @@ export interface StorePort {
   write(contents: string): Promise<void>;
 }
 
+export interface ArchiveStats {
+  notes: number;
+  comments: number;
+  bytes: number;
+}
+
 /** How long changes collect before they are written. */
 const SAVE_DELAY_MS = 1_500;
 
@@ -53,6 +59,13 @@ export class NoteStore {
 
   comments(filePath: string): readonly ReviewComment[] {
     return this.notes.get(filePath) ?? [];
+  }
+
+  archiveStats(): ArchiveStats {
+    const notes = Object.fromEntries(this.notes);
+    const comments = [...this.notes.values()].reduce((total, entries) => total + entries.length, 0);
+    const bytes = new TextEncoder().encode(JSON.stringify({ version: COMMENTS_SCHEMA_VERSION, notes })).length;
+    return { notes: this.notes.size, comments, bytes };
   }
 
   /** Replaces a note's comments. An empty list forgets the note. */

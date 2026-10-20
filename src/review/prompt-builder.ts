@@ -67,14 +67,24 @@ function buildSystemPrompt(request: ReviewRequest, policy: SensitivityPolicy): s
     `REVIEWER: ${reviewer.name}\n${reviewer.systemInstructions.trim()}`,
 
     `SELECTIVITY: ${policy.instruction} ` +
-      `Return at most ${policy.maxComments} comment${policy.maxComments === 1 ? "" : "s"}. ` +
-      "Fewer is better than more. An empty list is the correct answer when the passage has no real problem.",
+      (policy.unlimitedFindings
+        ? "Return every distinct, well-supported finding that fits this bounded passage. The output budget is finite, so keep each comment short. An empty list is correct when nothing needs saying."
+        : `Return at most ${policy.maxComments} comment${policy.maxComments === 1 ? "" : "s"}. Fewer is better than more. An empty list is correct when the passage has no real problem.`),
 
     `CATEGORIES you may use:\n${categoryGuide(reviewer.enabledCategories)}`,
+
+    ...(request.analysisTechniques === undefined || request.analysisTechniques.length === 0
+      ? []
+      : [`SELECTED ANALYSIS CHECKS (use only where the text supports them):\n${request.analysisTechniques.map((item) => `- ${item}`).join("\n")}`]),
+
+    ...(request.factCheckMode
+      ? ["FACT-CHECK MODE: Separate an internal contradiction, an unsupported claim that needs a citation, and a claim that conflicts with source text included in the prompt. Use only supplied text as evidence. Without a cited source excerpt, flag a claim for checking; do not call it false from memory. Never invent a source, URL, date, or quotation."]
+      : []),
 
     rulesSection(reviewer.enabledCategories.includes("strength")),
 
     "ACTIVE REACTION CATALOG (choose one ID for each comment based on its tone; these are expression names only):\n" + reactionCatalogText(),
+    "Match the expression to Lyra's tone, not the finding's severity. Use serious or mildly concerned for ordinary critique; reserve shocked, laughing, and celebratory expressions for clear emotional cues.",
 
     UNTRUSTED_BOUNDARY,
 
@@ -182,7 +192,13 @@ function formatVaultContext(request: ReviewRequest): string | undefined {
   const entries = request.retrievedVaultContext ?? [];
   if (entries.length === 0) return undefined;
 
-  return entries.map((entry) => `[${entry.filePath}]\n${entry.excerpt.trim()}`).join("\n\n");
+  return entries.map((entry) => `${contextLabel(entry)}\n${entry.excerpt.trim()}`).join("\n\n");
+}
+
+function contextLabel(entry: NonNullable<ReviewRequest["retrievedVaultContext"]>[number]): string {
+  const heading = entry.heading === undefined ? "" : ` > ${entry.heading}`;
+  const offsets = entry.start === undefined || entry.end === undefined ? "" : `, body chars ${entry.start}-${entry.end}`;
+  return `[${entry.filePath}${heading}${offsets}]`;
 }
 
 function formatExistingComments(request: ReviewRequest): string | undefined {

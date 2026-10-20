@@ -19,11 +19,21 @@ export interface StoryState {
   version: number;
   /** Chapter path to what she recorded from it. */
   chapters: Record<string, ChapterRecord>;
+  /** Completed part records kept while one long chapter is still being read. */
+  checkpoints?: Record<string, ChapterCheckpoint>;
   /** The shape of the whole story, as of the last chapter she read. */
   outline?: OutlineRecord;
 }
 
-export const STORY_STATE_VERSION = 1;
+export interface ChapterCheckpoint {
+  sourceHash: string;
+  modelId: string;
+  promptVersion: number;
+  partCount: number;
+  completedParts: Array<ChapterFacts | null>;
+}
+
+export const STORY_STATE_VERSION = 2;
 
 export function emptyState(): StoryState {
   return { version: STORY_STATE_VERSION, chapters: {} };

@@ -404,7 +404,17 @@ describe("finding the earlier scene", () => {
 
     expect(found[0]).toMatchObject({ filePath: chapter("Chapter 1"), reason: "lexical" });
     expect(found[0]!.excerpt).toContain("took a brass key from the hook behind the lamp room door");
+    expect(found[0]!.heading).toBe("One");
+    expect(chapters[0]!.text.slice(found[0]!.start, found[0]!.end)).toBe(found[0]!.excerpt);
     expect(found.length).toBeLessThanOrEqual(3);
+  });
+
+  it("uses chapter headings to find paraphrased callbacks and returns their source location", () => {
+    const text = "# Brass Key\n\nMara tucked the brass key inside the clock before the station closed.";
+    const found = new ChapterSearch().find([{ path: chapter("Chapter 4"), text }], "What happened to the brass key?");
+
+    expect(found[0]).toMatchObject({ filePath: chapter("Chapter 4"), heading: "Brass Key" });
+    expect(text.slice(found[0]!.start, found[0]!.end)).toBe(found[0]!.excerpt);
   });
 
   it("shows nothing when all that is shared is on every page", () => {
@@ -506,9 +516,11 @@ describe("keeping the notes current", () => {
   let sent: string[];
   let mayRead: boolean;
   let failFor: string | null;
+  let failOnceFor: string | null;
   let backlog: Array<{ novel: string; unread: number }>;
   let busy: boolean[];
   let outlined: string[];
+  let chapterReads: Map<string, number>;
   let failOutline: boolean;
   let timers: ManualTimers;
   let keeper: StoryKeeper;
@@ -525,9 +537,11 @@ describe("keeping the notes current", () => {
     sent = [];
     mayRead = true;
     failFor = null;
+    failOnceFor = null;
     backlog = [];
     busy = [];
     outlined = [];
+    chapterReads = new Map();
     failOutline = false;
     timers = new ManualTimers();
 
@@ -535,7 +549,10 @@ describe("keeping the notes current", () => {
       hasBrief: (folder) => notes.has(`${folder}/Lyra brief.md`),
       notesIn: (folder) =>
         [...notes.keys()].filter((path) => path.slice(0, path.lastIndexOf("/")) === folder),
-      read: (path) => Promise.resolve(notes.get(path) ?? null),
+      read: (path) => {
+        chapterReads.set(path, (chapterReads.get(path) ?? 0) + 1);
+        return Promise.resolve(notes.get(path) ?? null);
+      },
       writeNote: (path, text) => {
         notes.set(path, text);
         return Promise.resolve();
@@ -562,6 +579,10 @@ describe("keeping the notes current", () => {
         const title = /CHAPTER: (.*)/.exec(prompt.userPrompt)![1]!;
         sent.push(title);
         if (title === failFor) return Promise.reject(new Error("offline"));
+        if (title === failOnceFor) {
+          failOnceFor = null;
+          return Promise.reject(new Error("offline"));
+        }
         return Promise.resolve(
           JSON.stringify(facts({ summary: `What happens in ${title}.`, characters: [{ name: "Mara", notes: [{ fact: `Seen in ${title}.` }] }] })),
         );
@@ -648,6 +669,23 @@ describe("keeping the notes current", () => {
     expect(await keeper.unread(NOVEL)).toEqual([]);
   });
 
+  it("resumes a long chapter from the last completed part", async () => {
+    const paragraph = "The rain kept on, and so did she. ".repeat(40).trim();
+    const text = Array.from({ length: 90 }, () => paragraph).join("\n\n");
+    const parts = splitChapter(text);
+    const chapterTitle = chapter("Chapter 3");
+    notes.set(chapterTitle, text);
+    failOnceFor = `Chapter 3 (part 2 of ${parts.length})`;
+
+    expect(await keeper.update(NOVEL)).toEqual({ read: 2, failed: 1, waiting: 0 });
+    expect(sent.filter((title) => title === `Chapter 3 (part 1 of ${parts.length})`)).toHaveLength(1);
+
+    expect(await keeper.update(NOVEL)).toEqual({ read: 1, failed: 0, waiting: 0 });
+    expect(sent.filter((title) => title === `Chapter 3 (part 1 of ${parts.length})`)).toHaveLength(1);
+    expect(sent.filter((title) => title.startsWith("Chapter 3 (part "))).toHaveLength(parts.length + 1);
+    expect(JSON.parse(files.get(`${NOVEL}/Lyra notes/story.json`)!).checkpoints).toEqual({});
+  });
+
   it("outlines the whole story after reading, and says what the chapters just read changed", async () => {
     await keeper.update(NOVEL);
 
@@ -724,6 +762,19 @@ describe("keeping the notes current", () => {
     expect(await keeper.earlier("Journal/Today.md", "The brass key and the loose tile.")).toEqual([]);
   });
 
+  it("reuses the indexed chapter text until the vault reports a change", async () => {
+    const first = chapter("Chapter 1");
+    const later = chapter("Chapter 2");
+    await keeper.earlier(later, "Mara turned the brass key and found its cord frayed.");
+    await keeper.earlier(later, "Mara turned the brass key and found its cord frayed.");
+    expect(chapterReads.get(first)).toBe(1);
+
+    notes.set(first, prose("Mara buried the brass key beneath the floorboards."));
+    keeper.invalidateChapter(first);
+    await keeper.earlier(later, "Mara found the brass key beneath the floorboards.");
+    expect(chapterReads.get(first)).toBe(2);
+  });
+
   it("remembers what she read across a restart", async () => {
     await keeper.update(NOVEL);
 
@@ -739,6 +790,17 @@ describe("keeping the notes current", () => {
     });
 
     expect(await again.unread(NOVEL)).toEqual([]);
+  });
+
+  it("leaves an unreadable or newer story record untouched", async () => {
+    const path = `${NOVEL}/Lyra notes/story.json`;
+    const newer = '{"version":99,"chapters":{}}';
+    files.set(path, newer);
+    notes.set(chapter("Chapter 3"), prose("Mara found the station door open."));
+
+    expect(await keeper.update(NOVEL)).toEqual({ read: 0, failed: 0, waiting: 0 });
+    expect(sent).toEqual([]);
+    expect(files.get(path)).toBe(newer);
   });
 
   it("reads a changed chapter by herself, once it has been left alone for a while", async () => {
