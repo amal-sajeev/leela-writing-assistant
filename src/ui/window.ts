@@ -727,7 +727,10 @@ export class Companion {
     const border = frame.createEl("img", { cls: "lyra__frame" });
     border.alt = "";
     const frameUrl = this.deps.assetUrl("frame.webp");
-    if (frameUrl === null) border.addClass("is-missing");
+    if (frameUrl === null) {
+      border.addClass("is-missing");
+      frame.addClass("is-frame-missing");
+    }
     else border.setAttribute("src", frameUrl);
     border.addEventListener("error", () => {
       const fallback = this.deps.fallbackAssetUrl?.("frame.webp");
@@ -736,8 +739,10 @@ export class Companion {
         border.setAttribute("src", fallback);
       } else {
         border.addClass("is-missing");
+        frame.addClass("is-frame-missing");
       }
     });
+    border.addEventListener("load", () => frame.removeClass("is-frame-missing"));
 
     this.controls.clear();
     for (const control of FRAME_CONTROLS) {
@@ -1265,7 +1270,7 @@ export class Companion {
 
   /** How much of the text is below what the box is showing. */
   private talkBelow(): number {
-    const text = this.talkText as (HTMLElement & { scrollHeight?: number; clientHeight?: number }) | null;
+    const text = this.talkText;
     if (text === null) return 0;
     return (text.scrollHeight ?? 0) - (text.clientHeight ?? 0) - text.scrollTop;
   }
@@ -1313,7 +1318,7 @@ export class Companion {
 
   /** Moves on to the next part of what is in the box, keeping its last line in view to read on from. */
   private turnTalkPage(): void {
-    const text = this.talkText as (HTMLElement & { clientHeight?: number }) | null;
+    const text = this.talkText;
     const below = this.talkBelow();
     if (text === null) return;
 

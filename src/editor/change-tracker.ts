@@ -19,7 +19,7 @@ export interface ChangeTrackerOptions {
 }
 
 export function changeTracker(options: ChangeTrackerOptions): Extension {
-  const clock = options.now ?? Date.now;
+  const clock: () => number = options.now ?? (() => Date.now());
 
   return EditorView.updateListener.of((update) => {
     const filePath = editorFilePath(update.state);

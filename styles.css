@@ -57,7 +57,6 @@
   box-sizing: border-box;
   width: var(--lyra-w);
   max-height: calc(100vh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - 2 * var(--lyra-margin));
-  max-height: calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - 2 * var(--lyra-margin));
   /* Left to herself she keeps inside the area she stands in. */
   max-width: calc(var(--lyra-room, 100vw) - 2 * var(--lyra-margin));
   /* How wide she really is: the width asked for, or less where there is no room for it. */
@@ -65,6 +64,12 @@
   /* Only her window and her words take clicks; the rest passes to the editor. */
   pointer-events: none;
   font-family: var(--lyra-font);
+}
+
+@supports (height: 100dvh) {
+  .lyra {
+    max-height: calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - 2 * var(--lyra-margin));
+  }
 }
 
 .lyra[data-open="true"] {
@@ -377,7 +382,7 @@
 }
 
 /* Without the frame art there is still a window: a plain bevelled border. */
-.lyra__window:has(.lyra__frame.is-missing) {
+.lyra__window.is-frame-missing {
   border: 2px solid var(--lyra-cream);
   outline: 2px solid var(--lyra-ink);
   background-color: var(--lyra-navy);
@@ -599,7 +604,6 @@
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-  max-height: min(40vh, 22rem);
   /*
    * Never taller than the room above her: the app's height less her frame, the
    * typing box under it while they talk, and the rest of this box and its gaps.
@@ -609,20 +613,29 @@
     22rem,
     max(5em, calc(100vh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px))
   );
-  max-height: min(40vh, 22rem, max(5em, calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px)));
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--lyra-cream-dim) transparent;
 }
 
+@supports (height: 100dvh) {
+  .lyra__scroll {
+    max-height: min(40vh, 22rem, max(5em, calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px)));
+  }
+}
+
 /* Made taller by the author: all the room there is above her. */
 .lyra[data-tall="true"] .lyra__scroll {
-  max-height: 70vh;
   max-height: max(
     5em,
     calc(100vh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px)
   );
-  max-height: max(5em, calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px));
+}
+
+@supports (height: 100dvh) {
+  .lyra[data-tall="true"] .lyra__scroll {
+    max-height: max(5em, calc(100dvh - var(--lyra-top, 0px) - var(--lyra-bottom, 0px) - var(--lyra-wide) * 0.64 - var(--lyra-below, 0px) - 170px));
+  }
 }
 
 /* What she says. When it points at a passage it is a button: clicking it shows the passage. */
@@ -969,10 +982,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lyra *,
-  .lyra-flash {
-    animation: none !important;
-    transition: none !important;
+  .lyra.lyra *,
+  .lyra.lyra-flash {
+    animation: none;
+    transition: none;
   }
 }
 
@@ -1114,11 +1127,16 @@
    */
   --lyra-dialog-room: max(calc(var(--lyra-w) * 0.166 - 34px), 2.9em);
   max-height: var(--lyra-dialog-room);
-  max-height: round(down, var(--lyra-dialog-room), 1.45em);
   overflow-y: auto;
   scrollbar-width: none;
   white-space: pre-wrap;
   user-select: text;
+}
+
+@supports (height: round(down, 10px, 1px)) {
+  .lyra__dialog-text {
+    max-height: round(down, var(--lyra-dialog-room), 1.45em);
+  }
 }
 
 /* Made taller on request: most of the picture, still clear of the title bar. */

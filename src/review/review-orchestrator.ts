@@ -199,7 +199,10 @@ export class ReviewOrchestrator {
     }
 
     if (options.signal?.aborted) throw abortError();
-    if (results.length === 0 && firstError !== undefined) throw firstError;
+    if (results.length === 0 && firstError !== undefined) {
+      if (firstError instanceof Error) throw firstError;
+      throw new Error(String(firstError));
+    }
     if (results.length === 0 && failed.length > 0) {
       warnings.add("No part of the review completed, so existing notes were left alone.");
     }

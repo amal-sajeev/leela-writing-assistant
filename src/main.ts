@@ -1,4 +1,4 @@
-import { MarkdownRenderer, MarkdownView, normalizePath, Notice, Plugin, requireApiVersion, TFile, type Editor } from "obsidian";
+import { Component, MarkdownRenderer, MarkdownView, normalizePath, Notice, Plugin, requireApiVersion, TFile, type Editor } from "obsidian";
 
 import {
   buildTalkPrompt,
@@ -78,6 +78,7 @@ const MINIMUM_SIDEBAR_WIDTH = 200;
 const ACTIONABLE = new Set(["missing_key", "unauthorized", "quota", "model_not_found"]);
 
 export default class LyraPlugin extends Plugin {
+  private readonly markdownComponent = this.addChild(new Component());
   private readonly logger = new Logger(PLUGIN_ID, "warn");
 
   /** Named `prefs` because the base class keeps `settings` for itself. */
@@ -220,7 +221,7 @@ export default class LyraPlugin extends Plugin {
       assetUrl: (relativePath) => this.assetUrl(relativePath),
       fallbackAssetUrl: (relativePath) => EMBEDDED_ASSETS[relativePath] ?? null,
       renderMarkdown: (markdown, container) => {
-        void MarkdownRenderer.render(this.app, markdown, container, this.activeFile()?.path ?? "", this);
+        void MarkdownRenderer.render(this.app, markdown, container, this.activeFile()?.path ?? "", this.markdownComponent);
       },
       showPassage: (filePath, line) => this.showPassage(filePath, line),
       setStatus: (filePath, commentId, status) => this.setStatus(filePath, commentId, status),

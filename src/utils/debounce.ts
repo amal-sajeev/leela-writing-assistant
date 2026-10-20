@@ -11,7 +11,7 @@ export interface Debounced<A extends unknown[]> {
  * live review depends on (specification section 17).
  */
 export function debounce<A extends unknown[]>(fn: (...args: A) => void, waitMs: number): Debounced<A> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: number | undefined;
   let pendingArgs: A | undefined;
 
   const run = (): void => {
@@ -24,17 +24,17 @@ export function debounce<A extends unknown[]>(fn: (...args: A) => void, waitMs: 
   return {
     call(...args: A): void {
       pendingArgs = args;
-      if (timer !== undefined) clearTimeout(timer);
-      timer = setTimeout(run, waitMs);
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(run, waitMs);
     },
     cancel(): void {
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
       timer = undefined;
       pendingArgs = undefined;
     },
     flush(): void {
       if (timer === undefined) return;
-      clearTimeout(timer);
+      window.clearTimeout(timer);
       run();
     },
     isPending(): boolean {

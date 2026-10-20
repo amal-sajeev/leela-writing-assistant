@@ -7,17 +7,17 @@ export class TimeoutError extends Error {
 
 /** Resolves after `ms`, or rejects with an `AbortError` as soon as `signal` fires. */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (signal === undefined) return new Promise((resolve) => setTimeout(resolve, ms));
+  if (signal === undefined) return new Promise((resolve) => window.setTimeout(resolve, ms));
 
   return new Promise((resolve, reject) => {
     const abort = (): void => {
-      clearTimeout(timer);
+      window.clearTimeout(timer);
       const error = new Error("Request aborted");
       error.name = "AbortError";
       reject(error);
     };
 
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       signal.removeEventListener("abort", abort);
       resolve();
     }, ms);
@@ -36,14 +36,14 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<
   if (timeoutMs <= 0) return promise;
 
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new TimeoutError()), timeoutMs);
+    const timer = window.setTimeout(() => reject(new TimeoutError()), timeoutMs);
     promise.then(
       (value) => {
-        clearTimeout(timer);
+        window.clearTimeout(timer);
         resolve(value);
       },
       (error: unknown) => {
-        clearTimeout(timer);
+        window.clearTimeout(timer);
         reject(error instanceof Error ? error : new Error(String(error)));
       },
     );

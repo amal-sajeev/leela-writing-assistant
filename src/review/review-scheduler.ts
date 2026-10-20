@@ -56,8 +56,8 @@ const BUSY_RETRY_MS = 750;
 const PARAGRAPH_BREAK_DELAY_MS = 600;
 
 const SYSTEM_TIMERS: SchedulerTimers = {
-  setTimeout: (handler, ms) => setTimeout(handler, ms),
-  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  setTimeout: (handler, ms) => window.setTimeout(handler, ms),
+  clearTimeout: (handle) => window.clearTimeout(handle as number),
   now: () => Date.now(),
 };
 

@@ -209,17 +209,17 @@ export function parseTalkReply(raw: string): TalkSegment[] {
   const out: TalkSegment[] = [];
 
   for (const entry of listIn(raw) ?? salvaged(raw) ?? [raw]) {
-    const text = (
+    const text: unknown = (
       typeof entry === "string"
         ? entry
         : typeof entry === "object" && entry !== null
           ? ((entry as { say?: unknown }).say ?? (entry as { text?: unknown }).text)
           : ""
-    ) as unknown;
+    );
     if (typeof text !== "string" || text.trim().length === 0) continue;
 
     const given = typeof entry === "object" && entry !== null ? (entry as { mood?: unknown }).mood : undefined;
-    const mood = (TALK_MOODS as readonly unknown[]).includes(given) ? (given as TalkMood) : undefined;
+    const mood = isTalkMood(given) ? given : undefined;
     const givenReaction = typeof entry === "object" && entry !== null ? (entry as { reaction?: unknown }).reaction : undefined;
     const reaction = isActiveReaction(givenReaction) ? givenReaction : undefined;
 
@@ -259,7 +259,7 @@ function listIn(raw: string): unknown[] | null {
     try {
       const parsed: unknown = JSON.parse(text.slice(from, to + 1));
       if (Array.isArray(parsed)) return parsed;
-      const lines = (parsed as { lines?: unknown } | null)?.lines;
+      const lines = isRecord(parsed) ? parsed.lines : undefined;
       if (Array.isArray(lines)) return lines;
     } catch {
       // Not that shape. The next one, or plain talk.
@@ -267,6 +267,14 @@ function listIn(raw: string): unknown[] | null {
   }
 
   return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isTalkMood(value: unknown): value is TalkMood {
+  return TALK_MOODS.some((mood) => mood === value);
 }
 
 /**

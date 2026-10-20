@@ -54,17 +54,17 @@ export function usable<Output>(entry: z.ZodType<Output>): z.ZodType<Output[]> {
         const result = entry.safeParse(candidate);
         return result.success ? [result.data] : [];
       }),
-    ) as unknown as z.ZodType<Output[]>;
+    );
 }
 
 const fact: z.ZodType<Fact> = z
   .object({ fact: z.string().trim().min(1), quote: optionalText })
-  .transform((value) => (value.quote.length > 0 ? { fact: value.fact, quote: value.quote } : { fact: value.fact })) as unknown as z.ZodType<Fact>;
+  .transform((value) => (value.quote.length > 0 ? { fact: value.fact, quote: value.quote } : { fact: value.fact }));
 
 // Someone named with nothing recorded about them tells a later reader nothing.
 const named: z.ZodType<NamedFacts> = z
   .object({ name: z.string().trim().min(1), notes: usable(fact) })
-  .refine((value) => value.notes.length > 0) as unknown as z.ZodType<NamedFacts>;
+  .refine((value) => value.notes.length > 0);
 
 const event = z
   .object({ what: z.string().trim().min(1), when: optionalText })
@@ -79,8 +79,8 @@ export const chapterFactsSchema = z.object({
   summary: z.string().trim().catch(""),
   characters: usable(named),
   places: usable(named),
-  events: usable(event as unknown as z.ZodType<ChapterFacts["events"][number]>),
-  threads: usable(thread as unknown as z.ZodType<ChapterFacts["threads"][number]>),
+  events: usable(event),
+  threads: usable(thread),
 });
 
 /** How much of a chapter is read in one go. A longer one is read in parts. */

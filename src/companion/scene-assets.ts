@@ -129,12 +129,22 @@ export class SceneRotation {
     this.remaining = [...scenes];
     for (let index = this.remaining.length - 1; index > 0; index -= 1) {
       const other = Math.floor(random() * (index + 1));
-      [this.remaining[index], this.remaining[other]] = [this.remaining[other]!, this.remaining[index]!];
+      const current = this.remaining[index];
+      const target = this.remaining[other];
+      if (current !== undefined && target !== undefined) {
+        this.remaining[index] = target;
+        this.remaining[other] = current;
+      }
     }
 
     const last = this.remaining.length - 1;
     if (last > 0 && this.remaining[last]?.id === this.previousId) {
-      [this.remaining[last], this.remaining[last - 1]] = [this.remaining[last - 1]!, this.remaining[last]!];
+      const current = this.remaining[last];
+      const previous = this.remaining[last - 1];
+      if (current !== undefined && previous !== undefined) {
+        this.remaining[last] = previous;
+        this.remaining[last - 1] = current;
+      }
     }
   }
 }

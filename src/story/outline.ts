@@ -43,7 +43,7 @@ const text = z.string().trim().min(1);
 
 const movement: z.ZodType<Movement> = z
   .object({ title: text, chapters: z.string().trim().catch(""), beats: usable(text) })
-  .refine((value) => value.beats.length > 0) as unknown as z.ZodType<Movement>;
+  .refine((value) => value.beats.length > 0);
 
 const outlineSchema = z.object({
   premise: z.string().trim().catch(""),

@@ -545,6 +545,6 @@ function bodyOf(text: string): string {
 }
 
 const SYSTEM_TIMERS = {
-  setTimeout: (run: () => void, ms: number): unknown => setTimeout(run, ms),
-  clearTimeout: (handle: unknown): void => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  setTimeout: (run: () => void, ms: number): unknown => window.setTimeout(run, ms),
+  clearTimeout: (handle: unknown): void => window.clearTimeout(handle as number),
 };

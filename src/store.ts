@@ -27,7 +27,7 @@ const SAVE_DELAY_MS = 1_500;
 
 export class NoteStore {
   private notes = new Map<string, ReviewComment[]>();
-  private timer: ReturnType<typeof setTimeout> | undefined;
+  private timer: number | undefined;
   private writing: Promise<void> = Promise.resolve();
   /** False when the file exists but could not be understood, so it is left alone. */
   private writable = true;
@@ -95,7 +95,7 @@ export class NoteStore {
   /** Writes anything still waiting. Called on unload. */
   async flush(): Promise<void> {
     if (this.timer !== undefined) {
-      clearTimeout(this.timer);
+      window.clearTimeout(this.timer);
       this.timer = undefined;
       this.save();
     }
@@ -105,7 +105,7 @@ export class NoteStore {
   private saveSoon(): void {
     if (this.timer !== undefined) return;
 
-    this.timer = setTimeout(() => {
+    this.timer = window.setTimeout(() => {
       this.timer = undefined;
       this.save();
     }, SAVE_DELAY_MS);

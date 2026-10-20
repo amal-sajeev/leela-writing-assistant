@@ -1,6 +1,6 @@
 import process from "node:process";
+import { builtinModules } from "node:module";
 import esbuild from "esbuild";
-import builtins from "builtin-modules";
 import { installBuild, describeTarget } from "./scripts/vault-install.mjs";
 
 const production = process.argv.includes("production");
@@ -27,7 +27,7 @@ const external = [
   "@lezer/common",
   "@lezer/highlight",
   "@lezer/lr",
-  ...builtins,
+  ...builtinModules,
 ];
 
 /** Copies the built plugin into a vault after every successful build. */

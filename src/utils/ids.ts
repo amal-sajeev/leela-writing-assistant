@@ -11,7 +11,7 @@ export function createId(prefix?: string): string {
 }
 
 function randomToken(): string {
-  const cryptoRef = globalThis.crypto as Crypto | undefined;
+  const cryptoRef = window.crypto;
   if (cryptoRef?.randomUUID) return cryptoRef.randomUUID();
 
   if (cryptoRef?.getRandomValues) {

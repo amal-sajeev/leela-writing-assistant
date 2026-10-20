@@ -1,4 +1,4 @@
-import { Notice, PluginSettingTab, requireApiVersion, Setting, type App } from "obsidian";
+import { Notice, PluginSettingTab, requireApiVersion, Setting, type App, type SettingDefinitionItem } from "obsidian";
 
 import { DEFAULT_MODELS, PROVIDER_DISPLAY_NAMES } from "../constants";
 import type LyraPlugin from "../main";
@@ -53,23 +53,45 @@ export class LyraSettingTab extends PluginSettingTab {
     super.hide();
   }
 
+  override getSettingDefinitions(): SettingDefinitionItem[] {
+    return [
+      {
+        name: "Lyra settings",
+        render: (setting) => {
+          this.saveTypedNow();
+          setting.settingEl.addClass("lyra-settings-definition");
+          setting.settingEl.style.display = "block";
+          setting.controlEl.style.display = "block";
+          setting.controlEl.style.width = "100%";
+          const root = setting.controlEl.createDiv({ cls: "lyra-settings-content" });
+          this.renderAll(root);
+          return () => this.saveTypedNow();
+        },
+      },
+    ];
+  }
+
   override display(): void {
     this.saveTypedNow();
+    this.renderAll(this.containerEl);
+  }
 
-    const { containerEl } = this;
+  private renderAll(containerEl: HTMLElement): void {
     const scrollTop = containerEl.scrollTop;
     containerEl.empty();
-
-    this.renderProvider();
-    this.renderReading();
-    this.renderNovels();
-    this.renderWindow();
-
+    this.renderProvider(containerEl);
+    this.renderReading(containerEl);
+    this.renderNovels(containerEl);
+    this.renderWindow(containerEl);
     containerEl.scrollTop = scrollTop;
   }
 
-  private renderProvider(): void {
-    const { containerEl } = this;
+  private refreshSettings(): void {
+    if (requireApiVersion("1.13.0")) this.update();
+    else this.display();
+  }
+
+  private renderProvider(containerEl: HTMLElement): void {
     const provider = this.settings.provider;
 
     new Setting(containerEl).setName("Who answers").setHeading();
@@ -84,7 +106,7 @@ export class LyraSettingTab extends PluginSettingTab {
             .updateSettings((draft) => {
               draft.provider = value as ProviderId;
             })
-            .then(() => this.display());
+            .then(() => this.refreshSettings());
         });
       });
 
@@ -137,8 +159,7 @@ export class LyraSettingTab extends PluginSettingTab {
       );
   }
 
-  private renderReading(): void {
-    const { containerEl } = this;
+  private renderReading(containerEl: HTMLElement): void {
     const name = this.settings.companion.name;
 
     new Setting(containerEl).setName("How she reads").setHeading();
@@ -158,7 +179,7 @@ export class LyraSettingTab extends PluginSettingTab {
               .updateSettings((draft) => {
                 draft.persona.mode = value === "essay" ? "essay" : "fiction";
               })
-              .then(() => this.display());
+              .then(() => this.refreshSettings());
           }),
       );
 
@@ -238,7 +259,6 @@ export class LyraSettingTab extends PluginSettingTab {
         slider
           .setLimits(1, 20, 1)
           .setValue(this.settings.manualReview.maximumFindings)
-          .setDynamicTooltip()
           .onChange((value) => {
             void this.plugin.updateSettings((draft) => {
               draft.manualReview.maximumFindings = Math.round(value);
@@ -264,7 +284,6 @@ export class LyraSettingTab extends PluginSettingTab {
         slider
           .setLimits(SETTING_LIMITS.debounceMs.min / 1000, SETTING_LIMITS.debounceMs.max / 1000, 0.5)
           .setValue(this.settings.liveReview.debounceMs / 1000)
-          .setDynamicTooltip()
           .onChange((value) => {
             void this.plugin.updateSettings((draft) => {
               draft.liveReview.debounceMs = Math.round(value * 1000);
@@ -279,7 +298,6 @@ export class LyraSettingTab extends PluginSettingTab {
         slider
           .setLimits(0, 1, 0.05)
           .setValue(this.settings.persona.pickiness)
-          .setDynamicTooltip()
           .onChange((value) => {
             void this.plugin.updateSettings((draft) => {
               draft.persona.pickiness = value;
@@ -314,7 +332,7 @@ export class LyraSettingTab extends PluginSettingTab {
                 .updateSettings((draft) => {
                   draft.ignoredCategories = draft.ignoredCategories.filter((entry) => entry !== category);
                 })
-                .then(() => this.display());
+                .then(() => this.refreshSettings());
             }),
         );
       }
@@ -339,8 +357,7 @@ export class LyraSettingTab extends PluginSettingTab {
       });
   }
 
-  private renderNovels(): void {
-    const { containerEl } = this;
+  private renderNovels(containerEl: HTMLElement): void {
     const name = this.settings.companion.name;
 
     new Setting(containerEl).setName("Novels").setHeading();
@@ -370,8 +387,7 @@ export class LyraSettingTab extends PluginSettingTab {
       );
   }
 
-  private renderWindow(): void {
-    const { containerEl } = this;
+  private renderWindow(containerEl: HTMLElement): void {
 
     new Setting(containerEl).setName("Her window").setHeading();
 
@@ -423,7 +439,6 @@ export class LyraSettingTab extends PluginSettingTab {
         slider
           .setLimits(SETTING_LIMITS.lingerSeconds.min, SETTING_LIMITS.lingerSeconds.max, 1)
           .setValue(this.settings.companion.lingerSeconds)
-          .setDynamicTooltip()
           .onChange((value) => {
             void this.plugin.updateSettings((draft) => {
               draft.companion.lingerSeconds = value;
@@ -460,7 +475,7 @@ export class LyraSettingTab extends PluginSettingTab {
               .updateSettings((draft) => {
                 draft.companion.width = null;
               })
-              .then(() => this.display());
+              .then(() => this.refreshSettings());
           }),
       );
 
