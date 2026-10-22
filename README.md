@@ -205,8 +205,8 @@ chats between sessions** and saved chats and memory are left out of requests.
 1. `npm ci`, then `npm run build`. The build copies the plugin and separate
    artwork files into the vault named in `.vaultpath` (or `OBSIDIAN_VAULT_PATH`).
 2. In Obsidian: Settings → Community plugins → enable **Lyra**.
-3. Settings → Lyra: choose a provider (Mistral, OpenAI or Anthropic), paste its
-   API key, and press **Test**.
+3. Settings → Lyra: choose a provider (Mistral, OpenAI, Anthropic or Gemini),
+   paste its API key, and press **Test**.
 
 Reading along is off until you turn it on. The one thing she does unasked is
 keep notes on a novel (a folder with a story brief), which sends a chapter after
@@ -242,8 +242,9 @@ A note with `lyra: false` in its frontmatter is left alone.
 ## What is sent, and what is kept
 
 Lyra uses network access to send review and chat text to the AI provider you
-choose (Mistral, OpenAI or Anthropic) and receive its response. Novel notes are
-sent when the automatic novel-notes feature is enabled.
+choose (Mistral, OpenAI, Anthropic or Gemini) and receive its response. Novel
+notes are sent when the automatic novel-notes feature is enabled. Requests to
+OpenAI and Gemini explicitly opt out of the provider's request storage.
 
 A review sends the passage, a few thousand characters either side of it, the
 comments she has already made nearby, your story brief with its canon notes if

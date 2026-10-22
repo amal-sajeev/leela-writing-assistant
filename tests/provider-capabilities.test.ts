@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { THINKING_HEADROOM_TOKENS } from "../src/providers/budgets";
 import { outputTokenBudget, providerCapabilities } from "../src/providers/provider-capabilities";
 
 describe("provider capabilities", () => {
@@ -15,6 +16,19 @@ describe("provider capabilities", () => {
       structuredOutput: "json-schema-only-fallback",
       cancellation: "discard-only",
       streaming: false,
+    });
+  });
+
+  it("reserves thinking room for Gemini and never sends it a temperature", () => {
+    expect(outputTokenBudget("gemini", "gemini-3.6-flash", 1_400)).toBe(
+      1_400 + THINKING_HEADROOM_TOKENS,
+    );
+    expect(outputTokenBudget("gemini", "gemini-1.5-pro", 1_400)).toBe(1_400);
+    expect(providerCapabilities("gemini", "gemini-3.6-flash")).toMatchObject({
+      maxOutputTokens: 32_768,
+      reasoningHeadroomTokens: THINKING_HEADROOM_TOKENS,
+      structuredOutput: "json-schema-with-fallback",
+      sampling: "none",
     });
   });
 });

@@ -115,8 +115,12 @@ export function extractUsage(raw: unknown): ProviderUsage | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const usage = raw as Record<string, unknown>;
 
-  const inputTokens = asCount(usage.prompt_tokens ?? usage.input_tokens);
-  const outputTokens = asCount(usage.completion_tokens ?? usage.output_tokens);
+  const inputTokens = asCount(
+    usage.prompt_tokens ?? usage.input_tokens ?? usage.total_input_tokens,
+  );
+  const outputTokens = asCount(
+    usage.completion_tokens ?? usage.output_tokens ?? usage.total_output_tokens,
+  );
   if (inputTokens === undefined && outputTokens === undefined) return undefined;
 
   return {

@@ -60,6 +60,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   mistral: "Mistral",
   openai: "OpenAI",
   anthropic: "Anthropic",
+  gemini: "Gemini",
 };
 
 /**
@@ -70,6 +71,7 @@ export const DEFAULT_MODELS: Record<ProviderId, string> = {
   mistral: "mistral-large-latest",
   openai: "gpt-5.6-terra",
   anthropic: "claude-sonnet-5-5",
+  gemini: "gemini-3.6-flash",
 };
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
@@ -79,6 +81,9 @@ export const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
 
 /** Anthropic's paths carry their own version segment, so this stops at the host. */
 export const ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com";
+
+/** Gemini's version is a path segment too: the adapter appends `/v1/...`. */
+export const GEMINI_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
 
 /** Required on every Anthropic request; not a beta flag. */
 export const ANTHROPIC_API_VERSION = "2023-06-01";

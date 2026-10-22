@@ -164,6 +164,19 @@ describe("settings", () => {
     expect(settings.persona.pickiness).toBe(1);
   });
 
+  it("keep a Gemini key and model when settings are loaded", () => {
+    const settings = normalizeSettings({
+      providers: { gemini: { apiKey: "  g-key  ", model: "  gemini-4-argon  " } },
+    });
+
+    expect(settings.providers.gemini).toEqual({
+      apiKey: "g-key",
+      fallbackKeys: [],
+      model: "gemini-4-argon",
+    });
+    expect(settings.providers.mistral.model).toBe(DEFAULT_SETTINGS.providers.mistral.model);
+  });
+
   it("keep a dragged window size within limits, and treat anything else as unset", () => {
     expect(normalizeSettings({}).companion.width).toBeNull();
     expect(normalizeSettings({ companion: { width: "wide" } }).companion.width).toBeNull();

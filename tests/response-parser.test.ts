@@ -171,6 +171,16 @@ describe("extractUsage", () => {
     });
   });
 
+  it("reads Gemini interaction token counts", () => {
+    expect(
+      extractUsage({
+        total_input_tokens: 36,
+        total_output_tokens: 133,
+        total_thought_tokens: 658,
+      }),
+    ).toEqual({ inputTokens: 36, outputTokens: 133 });
+  });
+
   it("ignores missing or unusable usage instead of failing the review", () => {
     expect(extractUsage(undefined)).toBeUndefined();
     expect(extractUsage({})).toBeUndefined();

@@ -168,6 +168,7 @@ export const DEFAULT_SETTINGS: LyraSettings = {
     mistral: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.mistral },
     openai: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.openai },
     anthropic: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.anthropic },
+    gemini: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.gemini },
   },
 
   liveReview: {
@@ -293,6 +294,7 @@ export function normalizeSettings(raw: unknown): LyraSettings {
       mistral: normalizeProvider(providers.mistral, defaults.providers.mistral),
       openai: normalizeProvider(providers.openai, defaults.providers.openai),
       anthropic: normalizeProvider(providers.anthropic, defaults.providers.anthropic),
+      gemini: normalizeProvider(providers.gemini, defaults.providers.gemini),
     },
 
     liveReview: {
