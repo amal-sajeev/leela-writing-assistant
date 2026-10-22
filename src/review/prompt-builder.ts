@@ -136,7 +136,7 @@ function buildSystemPrompt(request: ReviewRequest, policy: SensitivityPolicy): s
     rulesSection(reviewer.enabledCategories.includes("strength")),
 
     "ACTIVE REACTION CATALOG (choose one ID for each comment based on its tone; these are expression names only):\n" + reactionCatalogText(),
-    `Match the expression to ${reviewer.name}'s tone, not the finding's severity. Use serious or mildly concerned for ordinary critique; reserve shocked, laughing, and celebratory expressions for clear emotional cues.`,
+    `Match the expression to ${reviewer.name}'s tone, not the finding's severity. Use serious for ordinary critique; reserve concerned, sad, shocked, laughing, and celebratory expressions for moments that clearly earn them. Most notes should not look alarmed.`,
 
     UNTRUSTED_BOUNDARY,
 

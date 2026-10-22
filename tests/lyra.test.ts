@@ -14,8 +14,16 @@ import {
   SCENES,
   seedOf,
   type CompanionLine,
+  type CompanionMood,
+  type Scene,
 } from "../src/companion/lines";
-import { ACTIVE_SCENES, IN_PROGRESS_ASSETS, PASSIVE_ASSETS, PASSIVE_SCENES } from "../src/companion/scene-assets";
+import {
+  ACTIVE_SCENES,
+  activeSceneOptions,
+  IN_PROGRESS_ASSETS,
+  PASSIVE_ASSETS,
+  PASSIVE_SCENES,
+} from "../src/companion/scene-assets";
 import type { AIProvider } from "../src/providers/provider";
 import { mergeReview, persona, reviewPassage } from "../src/review/review";
 import { DEFAULT_SETTINGS, normalizeSettings, type LyraSettings } from "../src/settings/settings";
@@ -69,6 +77,29 @@ describe("her scenes", () => {
   it("change slowly while she is left to herself", () => {
     const seen = new Set([0, 1, 2, 3, 4].map((slot) => sceneFor("resting", slot)));
     expect(seen.size).toBe(5);
+  });
+
+  it("rotates the ordinary expressions and keeps the worried ones for moments that earn them", () => {
+    const shown = (mood: CompanionMood, scene?: Scene): string[] =>
+      activeSceneOptions(mood, scene).map((entry) => entry.id);
+    const worried = ["idle_concerned", "idle_sad", "idle_shocked_sad"];
+
+    for (const mood of ["resting", "pointed", "asking", "answering", "happy", "greeting"] as const) {
+      for (const id of worried) expect(shown(mood)).not.toContain(id);
+    }
+    for (const scene of SCENES) {
+      for (const id of worried) expect(shown("pointed", scene)).not.toContain(id);
+    }
+
+    expect(shown("surprised")).toContain("idle_concerned");
+    expect(shown("sad")).toContain("idle_sad");
+
+    for (const mood of ["resting", "pointed", "asking", "answering"] as const) {
+      expect(shown(mood).length).toBeGreaterThanOrEqual(3);
+    }
+    expect(shown("pointed")).toEqual(
+      expect.arrayContaining(["idle_serious", "idle_teasing", "idle_embarassed"]),
+    );
   });
 
 });

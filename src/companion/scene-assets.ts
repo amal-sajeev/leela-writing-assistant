@@ -64,37 +64,43 @@ export function reactionCatalogText(): string {
   return ACTIVE_REACTION_IDS.map((id) => `- ${id}: ${ACTIVE_REACTION_CATALOG[id]}`).join("\n");
 }
 
+/**
+ * Ordinary moods and conversation rotate through the easy, attentive and pleased
+ * expressions, so the same picture rarely repeats. The worried ones (concerned,
+ * sad, shocked-sad) are held back for the moods that have earned them or for an
+ * expression the model asks for by name.
+ */
 const ACTIVE_BY_MOOD: Record<CompanionMood, readonly ActiveReaction[]> = {
-  resting: ["idle_happy_resting", "idle_happy", "idle_serious", "idle_concerned"],
-  waiting: ["idle_happy_resting", "idle_serious"],
-  reading: ["idle_happy_resting", "idle_serious"],
-  pointed: ["idle_concerned", "idle_serious"],
-  asking: ["idle_concerned", "idle_serious", "idle_teasing"],
-  answering: ["idle_serious", "idle_concerned", "idle_embarassed"],
-  surprised: ["idle_concerned", "idle_serious"],
-  happy: ["idle_happy", "idle_happy_resting", "idle_shocked_happy", "idle_laughing", "idle_welcome"],
-  excited: ["idle_happy", "idle_welcome", "idle_laughing"],
-  amused: ["idle_teasing", "idle_laughing", "idle_embarassed", "idle_sulking"],
-  sad: ["idle_sad", "idle_shocked_sad", "idle_concerned"],
-  greeting: ["idle_welcome", "idle_happy_resting", "idle_happy"],
+  resting: ["idle_happy_resting", "idle_happy", "idle_serious", "idle_teasing", "idle_welcome"],
+  waiting: ["idle_happy_resting", "idle_serious", "idle_happy", "idle_teasing"],
+  reading: ["idle_happy_resting", "idle_serious", "idle_happy", "idle_embarassed"],
+  pointed: ["idle_serious", "idle_teasing", "idle_happy_resting", "idle_embarassed"],
+  asking: ["idle_serious", "idle_teasing", "idle_embarassed", "idle_happy_resting", "idle_happy"],
+  answering: ["idle_serious", "idle_embarassed", "idle_teasing", "idle_happy_resting", "idle_happy"],
+  surprised: ["idle_serious", "idle_concerned"],
+  happy: ["idle_happy", "idle_happy_resting", "idle_shocked_happy", "idle_laughing", "idle_welcome", "idle_teasing", "idle_goodbye"],
+  excited: ["idle_happy", "idle_welcome", "idle_laughing", "idle_shocked_happy", "idle_teasing", "idle_goodbye"],
+  amused: ["idle_teasing", "idle_laughing", "idle_embarassed", "idle_sulking", "idle_goodbye", "idle_welcome"],
+  sad: ["idle_sad", "idle_serious", "idle_concerned"],
+  greeting: ["idle_welcome", "idle_happy", "idle_happy_resting", "idle_teasing", "idle_goodbye"],
 };
 
 const ACTIVE_BY_TALK_SCENE: Record<Scene, readonly ActiveReaction[]> = {
-  listening: ["idle_serious", "idle_concerned", "idle_happy_resting"],
-  sipping: ["idle_happy_resting", "idle_happy", "idle_serious"],
-  window: ["idle_serious", "idle_concerned", "idle_happy_resting"],
-  watering: ["idle_happy_resting", "idle_serious"],
-  strolling: ["idle_happy_resting", "idle_happy", "idle_serious"],
-  writing: ["idle_serious", "idle_concerned", "idle_happy_resting"],
-  reading: ["idle_serious", "idle_concerned", "idle_happy_resting"],
-  typing: ["idle_serious", "idle_concerned", "idle_happy_resting"],
-  shelf: ["idle_concerned", "idle_serious", "idle_happy_resting"],
-  pondering: ["idle_concerned", "idle_serious", "idle_embarassed"],
-  winking: ["idle_teasing", "idle_embarassed", "idle_shocked_happy"],
-  laughing: ["idle_laughing", "idle_shocked_happy"],
-  stretching: ["idle_happy_resting", "idle_happy", "idle_goodbye"],
-  tired: ["idle_happy_resting", "idle_concerned", "idle_serious"],
-  waving: ["idle_welcome", "idle_happy"],
+  listening: ["idle_serious", "idle_happy_resting", "idle_happy", "idle_embarassed", "idle_teasing"],
+  sipping: ["idle_happy_resting", "idle_happy", "idle_serious", "idle_teasing", "idle_welcome"],
+  window: ["idle_serious", "idle_happy_resting", "idle_happy", "idle_teasing"],
+  watering: ["idle_happy_resting", "idle_serious", "idle_happy", "idle_welcome"],
+  strolling: ["idle_happy_resting", "idle_happy", "idle_serious", "idle_welcome", "idle_teasing"],
+  writing: ["idle_serious", "idle_happy_resting", "idle_happy", "idle_embarassed"],
+  reading: ["idle_serious", "idle_happy_resting", "idle_happy", "idle_embarassed"],
+  typing: ["idle_serious", "idle_happy_resting", "idle_embarassed", "idle_teasing", "idle_happy"],
+  shelf: ["idle_serious", "idle_happy_resting", "idle_happy", "idle_embarassed"],
+  pondering: ["idle_serious", "idle_embarassed", "idle_happy_resting", "idle_teasing"],
+  winking: ["idle_teasing", "idle_embarassed", "idle_shocked_happy", "idle_laughing", "idle_goodbye", "idle_welcome"],
+  laughing: ["idle_laughing", "idle_shocked_happy", "idle_teasing", "idle_happy"],
+  stretching: ["idle_happy_resting", "idle_happy", "idle_goodbye", "idle_welcome", "idle_teasing"],
+  tired: ["idle_happy_resting", "idle_serious", "idle_happy"],
+  waving: ["idle_welcome", "idle_happy", "idle_teasing", "idle_goodbye", "idle_happy_resting"],
 };
 
 export function sceneMode(activity: SceneActivity): SceneMode {

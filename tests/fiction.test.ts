@@ -87,6 +87,7 @@ describe("reading fiction as fiction", () => {
     expect(system).toContain("unreliable narration");
     expect(system).toContain("do not rewrite or continue the manuscript");
     expect(system).toContain("Do not invent facts about the story");
+    expect(system).toContain("Most notes should not look alarmed");
     expect(seen[0]!.user).toContain("PASSAGE (the only text you are reviewing)");
   });
 
@@ -114,6 +115,7 @@ describe("reading fiction as fiction", () => {
     await reviewPassage(input, essay, provider({ seen }));
 
     expect(seen[0]!.system).toContain("critical reading partner");
+    expect(seen[0]!.system).toContain("Most notes should not look alarmed");
     expect(seen[0]!.user).toContain("REVIEWED TEXT");
     expect(focusFor(essay)).toContain("steps in an argument");
     expect(focusFor(DEFAULT_SETTINGS)).toContain("point of");
