@@ -13,6 +13,13 @@ export interface ProviderRequestConfig {
    */
   apiKeys: string[];
   model: string;
+  /** Models tried in order after `model` when it cannot serve the request. */
+  fallbackModels?: string[];
+  /**
+   * Internal, set per attempt: another model is waiting, so a rate-limited key
+   * should move on rather than sit out the provider's Retry-After.
+   */
+  skipRateLimitRetry?: boolean;
   baseUrl?: string;
   timeoutMs: number;
   maxRetries: number;

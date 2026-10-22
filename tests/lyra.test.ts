@@ -173,8 +173,28 @@ describe("settings", () => {
       apiKey: "g-key",
       fallbackKeys: [],
       model: "gemini-4-argon",
+      fallbackModels: [],
     });
     expect(settings.providers.mistral.model).toBe(DEFAULT_SETTINGS.providers.mistral.model);
+  });
+
+  it("keeps optional fallback keys and models, in order and within their limits", () => {
+    const settings = normalizeSettings({
+      providers: {
+        gemini: {
+          fallbackKeys: ["  key-two  ", "key-two", "", "key-three", "key-four", "key-five"],
+          fallbackModels: [
+            "  gemini-4-argon  ",
+            "gemini-4-argon",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash",
+          ],
+        },
+      },
+    });
+
+    expect(settings.providers.gemini.fallbackKeys).toEqual(["key-two", "key-three", "key-four"]);
+    expect(settings.providers.gemini.fallbackModels).toEqual(["gemini-4-argon", "gemini-3.7-flash"]);
   });
 
   it("keep a dragged window size within limits, and treat anything else as unset", () => {

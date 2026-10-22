@@ -297,6 +297,7 @@ export default class LyraPlugin extends Plugin {
       apiKey: apiKeys[0] ?? "",
       apiKeys,
       model: provider.model,
+      fallbackModels: provider.fallbackModels,
       ...(provider.baseUrl === undefined ? {} : { baseUrl: provider.baseUrl }),
       timeoutMs: this.prefs.advanced.requestTimeoutMs,
       maxRetries: this.prefs.advanced.maxRetries,

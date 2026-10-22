@@ -178,6 +178,10 @@ function codeFromStatus(status: number, detail: string): ProviderErrorCode {
   if (status === 400 || status === 422) {
     // Anthropic reports an exhausted balance as a plain bad request.
     if (/credit balance/i.test(detail)) return "quota";
+    // Gemini reports an invalid key as 400 rather than 401.
+    if (/api[_ ]key (?:is )?not valid|invalid api[_ ]key|incorrect api[_ ]key|api_key_invalid/i.test(detail)) {
+      return "unauthorized";
+    }
     return /model/i.test(detail) && /not found|does not exist|invalid model/i.test(detail)
       ? "model_not_found"
       : "provider_error";

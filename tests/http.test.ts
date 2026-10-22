@@ -96,6 +96,9 @@ describe("errorFromStatus", () => {
       [429, "Rate limit exceeded", "rate_limited"],
       [429, "Monthly quota exceeded", "quota"],
       [404, "Invalid model: nope", "model_not_found"],
+      [400, "API key not valid. Please pass a valid API key.", "unauthorized"],
+      [400, "Invalid API key provided", "unauthorized"],
+      [400, "Invalid schema for response_format", "provider_error"],
       [500, "Internal error", "provider_error"],
     ];
 

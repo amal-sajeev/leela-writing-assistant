@@ -62,14 +62,14 @@ describe("uniqueKeys", () => {
 describe("providerApiKeys", () => {
   it("lists the primary key then the fallbacks", () => {
     expect(
-      providerApiKeys({ apiKey: PRIMARY, fallbackKeys: [FALLBACK, PRIMARY, ""], model: "m" }),
+      providerApiKeys({ apiKey: PRIMARY, fallbackKeys: [FALLBACK, PRIMARY, ""], model: "m", fallbackModels: [] }),
     ).toEqual([PRIMARY, FALLBACK]);
   });
 
   it("treats an empty primary as absent", () => {
-    expect(providerApiKeys({ apiKey: "  ", fallbackKeys: [FALLBACK], model: "m" })).toEqual([
-      FALLBACK,
-    ]);
+    expect(
+      providerApiKeys({ apiKey: "  ", fallbackKeys: [FALLBACK], model: "m", fallbackModels: [] }),
+    ).toEqual([FALLBACK]);
   });
 });
 
@@ -138,6 +138,14 @@ describe("rotationSkipRetry", () => {
     expect(rotationSkipRetry({ apiKey: PRIMARY, apiKeys })).toEqual({ skipRetryFor: ["rate_limited"] });
     expect(rotationSkipRetry({ apiKey: FALLBACK, apiKeys })).toEqual({});
     expect(rotationSkipRetry({ apiKey: PRIMARY, apiKeys: [PRIMARY] })).toEqual({});
+  });
+
+  it("also skips it on the last key when another model is waiting", () => {
+    const apiKeys = [PRIMARY, FALLBACK];
+
+    expect(
+      rotationSkipRetry({ apiKey: FALLBACK, apiKeys, skipRateLimitRetry: true }),
+    ).toEqual({ skipRetryFor: ["rate_limited"] });
   });
 });
 

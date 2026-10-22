@@ -16,6 +16,7 @@ import {
 } from "./budgets";
 import { outputTokenBudget } from "./provider-capabilities";
 import { rotationSkipRetry, withApiKeyFallback } from "./key-fallback";
+import { withModelFallback } from "./model-fallback";
 import { sendJson, type HttpTransport } from "./http";
 import { ProviderError } from "./provider-errors";
 import type {
@@ -278,11 +279,23 @@ export class GeminiProvider implements AIProvider {
   private withKeys<T>(run: (config: ProviderRequestConfig) => Promise<T>): Promise<T> {
     const base = this.requireConfig();
 
-    return withApiKeyFallback({
-      keys: base.apiKeys,
-      missingKeyMessage: "No Gemini API key is configured",
+    return withModelFallback({
+      model: base.model,
+      ...(base.fallbackModels === undefined ? {} : { fallbackModels: base.fallbackModels }),
       ...(this.deps.logger === undefined ? {} : { logger: this.deps.logger }),
-      run: (apiKey) => run({ ...base, apiKey }),
+      run: (model, nextModelWaiting) =>
+        withApiKeyFallback({
+          keys: base.apiKeys,
+          missingKeyMessage: "No Gemini API key is configured",
+          ...(this.deps.logger === undefined ? {} : { logger: this.deps.logger }),
+          run: (apiKey) =>
+            run({
+              ...base,
+              apiKey,
+              model,
+              ...(nextModelWaiting ? { skipRateLimitRetry: true } : {}),
+            }),
+        }),
     });
   }
 

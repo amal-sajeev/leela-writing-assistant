@@ -206,7 +206,9 @@ chats between sessions** and saved chats and memory are left out of requests.
    artwork files into the vault named in `.vaultpath` (or `OBSIDIAN_VAULT_PATH`).
 2. In Obsidian: Settings → Community plugins → enable **Lyra**.
 3. Settings → Lyra: choose a provider (Mistral, OpenAI, Anthropic or Gemini),
-   paste its API key, and press **Test**.
+   paste its API key, and press **Test**. Optionally add up to three more keys
+   and up to two fallback models; they are tried in order when the main key or
+   model is rate-limited or unavailable.
 
 Reading along is off until you turn it on. The one thing she does unasked is
 keep notes on a novel (a folder with a story brief), which sends a chapter after
@@ -216,7 +218,7 @@ you change it; turn off **Keep notes on a novel** if you do not want that.
 
 | | |
 | --- | --- |
-| Provider, API key, model | Who answers. |
+| Provider, API key, model | Who answers. Extra keys and up to two fallback models are optional. |
 | What you are writing | Fiction (the default) or essays, articles and notes. |
 | How she puts it | Gentle, Balanced or Direct. Manner only. |
 | Talk in character | On (the default), she talks informally: dry, unimpressed, a little teasing. Off, she is plain and neutral. She finds the same things either way. |
@@ -260,9 +262,10 @@ Her comments, and anything said back and forth about them, are kept in
 press Apply on an example. The one folder she writes in is `Lyra notes`, with her
 record of each chapter in `story.json` inside it.
 
-On Obsidian 1.11.4 or later, API keys are kept in Obsidian's secret storage and
-not in the plugin's data file; a key already in the data file is moved across the
-first time the plugin loads. On older versions they stay in the data file.
+On Obsidian 1.11.4 or later, API keys (including fallback keys) are kept in
+Obsidian's secret storage and not in the plugin's data file; a key already in
+the data file is moved across the first time the plugin loads. On older versions
+they stay in the data file.
 
 ## Her window
 

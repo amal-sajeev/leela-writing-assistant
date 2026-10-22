@@ -30,17 +30,20 @@ export const KEY_ROTATION_SKIP_RETRY: readonly ProviderErrorCode[] = ["rate_limi
 
 /**
  * `send` options for the key a request is about to use. The last key has nowhere
- * left to rotate to, so it keeps the ordinary backoff: otherwise adding a spare
- * key would make a rate limit shared by both fail faster than having one.
+ * left to rotate to, so it keeps the ordinary backoff, unless another model is
+ * waiting: then it moves on rather than sitting out Retry-After.
  */
 export function rotationSkipRetry(config: {
   apiKey: string;
   apiKeys: readonly string[];
+  skipRateLimitRetry?: boolean;
 }): { skipRetryFor?: readonly ProviderErrorCode[] } {
   const keys = uniqueKeys(config.apiKeys);
   const isLast = keys.length < 2 || keys[keys.length - 1] === config.apiKey.trim();
 
-  return isLast ? {} : { skipRetryFor: KEY_ROTATION_SKIP_RETRY };
+  return isLast && config.skipRateLimitRetry !== true
+    ? {}
+    : { skipRetryFor: KEY_ROTATION_SKIP_RETRY };
 }
 
 export interface WithApiKeyFallbackOptions<T> {

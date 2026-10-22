@@ -541,6 +541,42 @@ describe("where the API keys are kept", () => {
     expect(loaded.settings.providers.mistral.apiKey).toBe("sk-from-the-data-file");
   });
 
+  it("moves fallback keys found in the data file into the secret store", () => {
+    const secrets = store();
+    const onDisk = settings((draft) => {
+      draft.providers.gemini.fallbackKeys = ["g-second", "g-third"];
+    });
+
+    const loaded = withStoredKeys(onDisk, secrets);
+
+    expect(loaded.migrated).toBe(true);
+    expect(secrets.secrets[secretId("gemini", 1)]).toBe("g-second");
+    expect(secrets.secrets[secretId("gemini", 2)]).toBe("g-third");
+    expect(loaded.settings.providers.gemini.fallbackKeys).toEqual(["g-second", "g-third"]);
+  });
+
+  it("fills fallback keys in from the store, and clears unused slots when saving", () => {
+    const secrets = store({
+      [secretId("openai", 1)]: "sk-second",
+      [secretId("openai", 2)]: "sk-third",
+    });
+
+    const loaded = withStoredKeys(DEFAULT_SETTINGS, secrets);
+    expect(loaded.migrated).toBe(false);
+    expect(loaded.settings.providers.openai.apiKey).toBe("");
+    expect(loaded.settings.providers.openai.fallbackKeys).toEqual(["sk-second", "sk-third"]);
+
+    const changed = settings((draft) => {
+      draft.providers.openai.fallbackKeys = ["sk-new-second"];
+    });
+    const saved = forSaving(changed, secrets);
+
+    expect(saved.providers.openai.fallbackKeys).toEqual([]);
+    expect(secrets.secrets[secretId("openai", 1)]).toBe("sk-new-second");
+    expect(secrets.secrets[secretId("openai", 2)]).toBe("");
+    expect(secrets.secrets[secretId("openai", 3)]).toBe("");
+  });
+
   it("fills keys in from the store, and saves the data file without them", () => {
     const secrets = store({ [secretId("anthropic")]: "sk-ant-stored" });
 

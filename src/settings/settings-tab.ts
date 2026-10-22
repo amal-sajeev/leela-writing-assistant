@@ -8,12 +8,22 @@ import { debounce, type Debounced } from "../utils/debounce";
 import {
   DEFAULT_ESSAY_FOCUS,
   DEFAULT_FICTION_FOCUS,
+  MAX_FALLBACK_KEYS,
+  MAX_FALLBACK_MODELS,
   SETTING_LIMITS,
   type LyraSettings,
 } from "./settings";
 
 /** How long a text field waits after the last keystroke before it saves. */
 const TYPING_SAVE_DELAY_MS = 500;
+
+/** Writes one optional slot without leaving holes in the array. */
+function withSlot(values: readonly string[], index: number, value: string): string[] {
+  const next = [...values];
+  while (next.length <= index) next.push("");
+  next[index] = value;
+  return next;
+}
 
 /**
  * One short page: who answers, when she reads, how she reads, how she shows up.
@@ -128,6 +138,32 @@ export class LyraSettingTab extends PluginSettingTab {
           });
       });
 
+    for (let index = 0; index < MAX_FALLBACK_KEYS; index += 1) {
+      new Setting(containerEl)
+        .setName(`Fallback API key ${index + 1}`)
+        .setDesc(
+          index === 0
+            ? "Optional. Tried in order when the main key is rate-limited or rejected."
+            : "Optional.",
+        )
+        .addText((text) => {
+          text.inputEl.type = "password";
+          text.inputEl.autocomplete = "off";
+          text
+            .setPlaceholder("Paste another API key")
+            .setValue(this.settings.providers[provider].fallbackKeys[index] ?? "")
+            .onChange((value) => {
+              this.saveWhenTypingPauses(`fallbackKey:${provider}:${index}`, (draft) => {
+                draft.providers[provider].fallbackKeys = withSlot(
+                  draft.providers[provider].fallbackKeys,
+                  index,
+                  value.trim(),
+                );
+              });
+            });
+        });
+    }
+
     new Setting(containerEl)
       .setName("Model")
       .setDesc("Any model name the provider accepts.")
@@ -147,7 +183,7 @@ export class LyraSettingTab extends PluginSettingTab {
           this.saveTypedNow();
           try {
             await this.plugin.providers.require(provider).validateConfiguration();
-            new Notice(`${PROVIDER_DISPLAY_NAMES[provider]} is reachable and the model works.`);
+            new Notice(`${PROVIDER_DISPLAY_NAMES[provider]} is reachable and a configured model works.`);
           } catch (error) {
             new Notice(describeProviderError(toProviderError(error), provider), 8000);
           } finally {
@@ -155,6 +191,30 @@ export class LyraSettingTab extends PluginSettingTab {
           }
         }),
       );
+
+    for (let index = 0; index < MAX_FALLBACK_MODELS; index += 1) {
+      new Setting(containerEl)
+        .setName(`Fallback model ${index + 1}`)
+        .setDesc(
+          index === 0
+            ? "Optional. Tried when the main model is unavailable or rate-limited."
+            : "Optional.",
+        )
+        .addText((text) =>
+          text
+            .setPlaceholder("Optional")
+            .setValue(this.settings.providers[provider].fallbackModels[index] ?? "")
+            .onChange((value) => {
+              this.saveWhenTypingPauses(`fallbackModel:${provider}:${index}`, (draft) => {
+                draft.providers[provider].fallbackModels = withSlot(
+                  draft.providers[provider].fallbackModels,
+                  index,
+                  value.trim(),
+                );
+              });
+            }),
+        );
+    }
   }
 
   private renderReading(containerEl: HTMLElement): void {

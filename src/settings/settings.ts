@@ -11,11 +11,19 @@ import { clampFraction, clampInt } from "../utils/number";
  * and are kept at values that have already proved themselves.
  */
 
+/** Extra key slots after the primary one. Four keys in all. */
+export const MAX_FALLBACK_KEYS = 3;
+
+/** Model slots tried after the primary one. */
+export const MAX_FALLBACK_MODELS = 2;
+
 export interface ProviderSettings {
   apiKey: string;
   /** Extra keys tried in order when the first is rate-limited or rejected. */
   fallbackKeys: string[];
   model: string;
+  /** Models tried in order when the primary cannot serve the request. */
+  fallbackModels: string[];
   baseUrl?: string;
 }
 
@@ -165,10 +173,10 @@ export const DEFAULT_SETTINGS: LyraSettings = {
 
   provider: "mistral",
   providers: {
-    mistral: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.mistral },
-    openai: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.openai },
-    anthropic: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.anthropic },
-    gemini: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.gemini },
+    mistral: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.mistral, fallbackModels: [] },
+    openai: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.openai, fallbackModels: [] },
+    anthropic: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.anthropic, fallbackModels: [] },
+    gemini: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.gemini, fallbackModels: [] },
   },
 
   liveReview: {
@@ -254,16 +262,36 @@ function asText(value: unknown, fallback: string, maxLength: number): string {
     : fallback;
 }
 
+/** Non-empty strings in order, trimmed, duplicates dropped, capped. */
+function asList(value: unknown, limit: number, maxLength?: number): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+
+    const text = maxLength === undefined ? entry.trim() : entry.trim().slice(0, maxLength);
+    if (text.length === 0 || seen.has(text)) continue;
+
+    seen.add(text);
+    result.push(text);
+    if (result.length === limit) break;
+  }
+
+  return result;
+}
+
 function normalizeProvider(raw: unknown, fallback: ProviderSettings): ProviderSettings {
   const input = asRecord(raw);
   const baseUrl = typeof input.baseUrl === "string" ? input.baseUrl.trim() : "";
 
   return {
     apiKey: typeof input.apiKey === "string" ? input.apiKey.trim() : fallback.apiKey,
-    fallbackKeys: Array.isArray(input.fallbackKeys)
-      ? input.fallbackKeys.filter((key): key is string => typeof key === "string" && key.trim().length > 0)
-      : [],
+    fallbackKeys: asList(input.fallbackKeys, MAX_FALLBACK_KEYS),
     model: asText(input.model, fallback.model, 200),
+    fallbackModels: asList(input.fallbackModels, MAX_FALLBACK_MODELS, 200),
     ...(baseUrl.length > 0 ? { baseUrl } : {}),
   };
 }

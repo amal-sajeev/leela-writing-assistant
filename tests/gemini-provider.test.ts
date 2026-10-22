@@ -280,6 +280,96 @@ describe("GeminiProvider structured output fallback", () => {
   });
 });
 
+describe("GeminiProvider fallback models", () => {
+  it("tries a fallback model when the primary model is unknown", async () => {
+    const { provider, requests } = createProvider(
+      [
+        response(404, { error: { message: "model gemini-3.6-flash is not found" } }),
+        reviewResponse(),
+      ],
+      { fallbackModels: ["gemini-4-argon"] },
+    );
+
+    const result = await provider.review(REVIEW_INPUT);
+
+    expect(result.comments).toHaveLength(1);
+    expect(requests.map((request) => bodyOf(request).model)).toEqual([
+      "gemini-3.6-flash",
+      "gemini-4-argon",
+    ]);
+  });
+
+  it("uses every key on one model before moving to the next model", async () => {
+    const primary = "AIzaSy-primary";
+    const secondary = "AIzaSy-secondary";
+    const { provider, requests } = createProvider(
+      [
+        response(429, { error: { message: "rate limit" } }),
+        response(429, { error: { message: "rate limit" } }),
+        reviewResponse(),
+      ],
+      {
+        apiKey: primary,
+        apiKeys: [primary, secondary],
+        fallbackModels: ["gemini-4-argon"],
+      },
+    );
+
+    await provider.review(REVIEW_INPUT);
+
+    expect(requests.map((request) => bodyOf(request).model)).toEqual([
+      "gemini-3.6-flash",
+      "gemini-3.6-flash",
+      "gemini-4-argon",
+    ]);
+    expect(requests.map((request) => request.headers["x-goog-api-key"])).toEqual([
+      primary,
+      secondary,
+      primary,
+    ]);
+  });
+
+  it("does not try a fallback model for a bad request", async () => {
+    const { provider, requests } = createProvider(
+      [response(400, { error: { message: "Invalid argument" } })],
+      { fallbackModels: ["gemini-4-argon"] },
+    );
+
+    await expect(provider.review(REVIEW_INPUT)).rejects.toSatisfy(
+      (error: unknown) => isProviderError(error) && error.code === "provider_error",
+    );
+    expect(requests).toHaveLength(1);
+  });
+
+  it("moves to the fallback model without waiting out a rate limit on the last key", async () => {
+    const primary = "AIzaSy-primary";
+    const secondary = "AIzaSy-secondary";
+    const { provider, requests } = createProvider(
+      [
+        response(429, { error: { message: "rate limit" } }),
+        response(429, { error: { message: "rate limit" } }),
+        reviewResponse(),
+      ],
+      {
+        apiKey: primary,
+        apiKeys: [primary, secondary],
+        fallbackModels: ["gemini-4-argon"],
+        maxRetries: 3,
+        retryInitialDelayMs: 1,
+      },
+    );
+
+    await provider.review(REVIEW_INPUT);
+
+    expect(requests).toHaveLength(3);
+    expect(requests.map((request) => bodyOf(request).model)).toEqual([
+      "gemini-3.6-flash",
+      "gemini-3.6-flash",
+      "gemini-4-argon",
+    ]);
+  });
+});
+
 describe("GeminiProvider configuration", () => {
   it("sends nothing at all without a key", async () => {
     const { provider, requests } = createProvider([reviewResponse()], { apiKey: "  " });
