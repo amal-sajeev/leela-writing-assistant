@@ -93,8 +93,8 @@ describe("reading fiction as fiction", () => {
   it("selects a short analysis playbook for the writing mode", async () => {
     const fictionSeen: Array<{ system: string; user: string }> = [];
     await reviewPassage({ ...input, mode: "exhaustive" }, DEFAULT_SETTINGS, provider({ seen: fictionSeen }));
-    expect(fictionSeen[0]!.system).toContain("scene-craft:");
-    expect(fictionSeen[0]!.system).toContain("narrative-control:");
+    expect(fictionSeen[0]!.system).toContain("orientation:");
+    expect(fictionSeen[0]!.system).toContain("viewpoint-distance:");
     expect(fictionSeen[0]!.system).not.toContain("argument:");
 
     const essaySeen: Array<{ system: string; user: string }> = [];
@@ -105,7 +105,7 @@ describe("reading fiction as fiction", () => {
     );
     expect(essaySeen[0]!.system).toContain("argument:");
     expect(essaySeen[0]!.system).toContain("factual-precision:");
-    expect(essaySeen[0]!.system).not.toContain("scene-craft:");
+    expect(essaySeen[0]!.system).not.toContain("orientation:");
   });
 
   it("uses the essay prompt for essays, and a brief that follows the mode", async () => {
