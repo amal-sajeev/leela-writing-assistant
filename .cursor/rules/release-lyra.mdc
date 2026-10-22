@@ -1,0 +1,62 @@
+---
+description: How to cut and publish a Lyra release
+alwaysApply: true
+---
+
+# Releasing Lyra
+
+Use this whenever shipping an update to the Obsidian Community plugin. The full
+local manual is in `RELEASING.md` (gitignored). Never include unrelated
+working-tree changes in the release commit.
+
+## 1. Version
+
+Set the same version in all four places:
+
+- `package.json` → `version`
+- `package-lock.json` → both root `version` fields (root object and `packages[""]`)
+- `manifest.json` → `version`
+- `versions.json` → new key mapping to the minimum Obsidian version
+
+`manifest.json` is the source of truth for the tag name.
+
+## 2. Checks
+
+Use Node 22.16.x and npm 10.9.2:
+
+```powershell
+npx --yes npm@10.9.2 ci
+npm run verify
+```
+
+`verify` runs typecheck, lint, tests, the offline eval, the production build, and
+the production-build check. Do not release while any of it fails.
+
+## 3. Stage
+
+Confirm `main.js`, `manifest.json`, and `styles.css` exist and are current.
+`main.js` is a build artifact and is not tracked by git; attach it to the GitHub
+release, do not commit it. Review `git diff --check` and `git status`, then stage
+only the intended source, test, and version files.
+
+```powershell
+$version = (Get-Content manifest.json | ConvertFrom-Json).version
+git commit -m "Release Lyra $version"
+git push origin main
+git tag -a $version -m "Lyra $version"
+git push origin $version
+```
+
+## 4. Publish
+
+`gh` must be installed and authenticated (`gh auth login`, or `GH_TOKEN` set):
+
+```powershell
+gh release create $version --title "Lyra $version" --notes "Release notes here." main.js manifest.json styles.css
+```
+
+The tag must exactly match `manifest.json`. Publish all three built files as
+release assets. A GitHub release is what triggers the Community Directory scan;
+use **Check for new releases** or **Request review** there if it does not appear.
+Listing edits (screenshots, description, categories, attribution) are made under
+**Edit listing**, not by the CLI release.
