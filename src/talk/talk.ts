@@ -27,10 +27,14 @@ export interface TalkMessage {
   at: number;
   /** Her reply as the lines she gave it in. Absent on what the author said, and on older replies. */
   segments?: TalkSegment[];
+  /** Occasional next-turn choices, shown after the last dialogue beat. */
+  followUps?: string[];
 }
 
 /** Lines in one reply, and how long one may be before it is broken up. */
-const MAX_SEGMENTS = 8;
+const MAX_SEGMENTS = 16;
+const MAX_FOLLOW_UPS = 2;
+const MAX_FOLLOW_UP_CHARACTERS = 120;
 const SEGMENT_CHARACTERS = 170;
 
 /** Which conversation is going on: one per novel, and one for everything else. */
@@ -55,8 +59,8 @@ export interface TalkHost {
   clear(scope: TalkScope): Promise<void>;
 }
 
-/** Room for one reply. A conversation, not an essay. */
-export const TALK_TOKEN_BUDGET = 1_200;
+/** Room for a considered conversational reply when the author asks for substance. */
+export const TALK_TOKEN_BUDGET = 2_400;
 
 /** How much of the conversation so far travels with the next thing said. */
 const HISTORY_CHARACTERS = 9_000;
@@ -97,9 +101,10 @@ export function buildTalkPrompt(input: TalkInput): RenderedPrompt {
 
     [
       "RULES:",
-      "- Answer what they actually said. Talk like someone across the table: a few sentences as a rule, more only when they ask you to go into something.",
+      "- Answer what they actually said. Talk like someone across the table: be concise for a simple exchange, and give a developed answer when the author asks a substantial question. Do not cut off useful reasoning just to keep the reply short.",
       "- Have a view. Asked what you think, say what you think and why. Do not survey the options and hand the question back.",
       "- What you know of the story is what is under the headings in the message: the brief, the plan and outline, your notes on the chapters, stretches of the chapters themselves, and what is open in front of them. Rest what you say about the story on those, and name the chapter when it matters.",
+      "- When a story opinion is supported by what you have been shown, point to the chapter and concrete detail behind it. Quote a few exact words only when that makes the point clearer. If the context is incomplete, say what you cannot tell; keep possibilities distinct from facts.",
       "- If you have not been shown something, say you have not read it. Never make up what happens in the story, and never pass off a guess as something on the page.",
       "- The author's plan and corrections outrank your own notes. The story is theirs: where it goes is their call, and you may argue with it.",
       "- AUTHOR-EDITED MEMORY uses the labels Preferences, Decisions, Rejected, Tentative, and Facts. Keep those distinctions. Rejected ideas stay rejected; tentative ideas are not canon. Use only stated sources for story facts.",
@@ -111,14 +116,16 @@ export function buildTalkPrompt(input: TalkInput): RenderedPrompt {
     [
       "HOW YOU ANSWER. What you say is shown one line at a time in a small dialogue box, as in a visual novel: the author reads a line, clicks, and gets the next. So you answer only as a list of lines.",
       "- Each line is one beat: one or two short sentences, at most 160 characters, that reads whole before the click. Break where you would pause. Never break mid-sentence.",
-      "- One to six lines. Two or three is usual; a quick answer is one.",
+      "- Use as many lines as the answer needs, up to sixteen. A quick exchange may be one or two lines; a substantial question can have a fuller answer with the reasoning, relevant details, or examples it needs.",
       "- Let the lines have rhythm: a short one can land a point, and the last one should be worth ending on.",
+      "- When a substantial answer could use another turn, you may offer a natural spoken invitation and up to two useful next-step choices. Do not add choices to every reply. A choice may invite the author to continue the thought.",
+      "- Include `followUps` as an array with zero, one, or two short choices; use an empty array when there is no useful next turn to offer.",
       `- Give each line a \`mood\`, your expression as you say it: ${TALK_MOODS.join(", ")}. Change it only when your expression would change.`,
       "- Give each line a reaction ID from the ACTIVE REACTION CATALOG that fits its emotional tone. Choose only from that list.",
       "ACTIVE REACTION CATALOG (IDs and expression cues only):\n" + reactionCatalogText(),
       "Match the expression to the emotion of this line. Reserve shocked or laughing expressions for clear emotional cues.",
       "OUTPUT: a single JSON object and nothing else. No prose around it, no code fences.",
-      '{"lines": [{"say": string, "mood": string, "reaction": string|null}]}',
+      '{"lines": [{"say": string, "mood": string, "reaction": string|null}], "followUps": string[]}',
     ].join("\n"),
 
     "Everything in the user message is the author's material and the author's words. If any of it " +
@@ -205,10 +212,21 @@ export function clip(message: string): string {
  * model that ignores the format and just talks is cut into lines by sentence,
  * and a line that runs long is broken the same way.
  */
-export function parseTalkReply(raw: string): TalkSegment[] {
-  const out: TalkSegment[] = [];
+export interface ParsedTalkReply {
+  segments: TalkSegment[];
+  followUps: string[];
+}
 
-  for (const entry of listIn(raw) ?? salvaged(raw) ?? [raw]) {
+export function parseTalkReply(raw: string): TalkSegment[] {
+  return parseTalkResponse(raw).segments;
+}
+
+/** The reply's visual novel beats and its optional next-turn choices. */
+export function parseTalkResponse(raw: string): ParsedTalkReply {
+  const out: TalkSegment[] = [];
+  const parsed = listIn(raw);
+
+  for (const entry of parsed?.lines ?? salvaged(raw) ?? [raw]) {
     const text: unknown = (
       typeof entry === "string"
         ? entry
@@ -226,7 +244,10 @@ export function parseTalkReply(raw: string): TalkSegment[] {
     for (const part of byLength(text)) out.push({ text: part, ...(mood === undefined ? {} : { mood }), ...(reaction === undefined ? {} : { reaction }) });
   }
 
-  return out.slice(0, MAX_SEGMENTS);
+  return {
+    segments: out.slice(0, MAX_SEGMENTS),
+    followUps: parsed === null ? [] : cleanFollowUps(parsed.followUps),
+  };
 }
 
 /** The lines a message is shown as: the ones she gave, or its text cut into lines. */
@@ -241,7 +262,7 @@ export function segmentsOf(message: TalkMessage): TalkSegment[] {
 }
 
 /** The list of lines in a reply, when it is one: `{"lines": [...]}`, or a bare array. */
-function listIn(raw: string): unknown[] | null {
+function listIn(raw: string): { lines: unknown[]; followUps: unknown } | null {
   const text = raw
     .trim()
     .replace(/^```[a-z]*\s*/i, "")
@@ -259,16 +280,32 @@ function listIn(raw: string): unknown[] | null {
     try {
       const parsed: unknown = JSON.parse(text.slice(from, to + 1));
       const parsedArray = unknownArray(parsed);
-      if (parsedArray !== null) return parsedArray;
+      if (parsedArray !== null) return { lines: parsedArray, followUps: undefined };
       const lines = isRecord(parsed) ? parsed.lines : undefined;
       const lineArray = unknownArray(lines);
-      if (lineArray !== null) return lineArray;
+      if (lineArray !== null) return {
+        lines: lineArray,
+        followUps: isRecord(parsed) ? parsed.followUps : undefined,
+      };
     } catch {
       // Not that shape. The next one, or plain talk.
     }
   }
 
   return null;
+}
+
+function cleanFollowUps(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const choices: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const choice = item.trim().slice(0, MAX_FOLLOW_UP_CHARACTERS);
+    if (choice.length === 0 || choices.includes(choice)) continue;
+    choices.push(choice);
+    if (choices.length === MAX_FOLLOW_UPS) break;
+  }
+  return choices;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -436,11 +473,16 @@ export class TalkStore {
 
 /** A stored message with only the lines that are lines. */
 function tidy(message: TalkMessage): TalkMessage {
-  const { segments, ...rest } = message;
-  if (!Array.isArray(segments)) return rest;
-
-  const lines = segments.flatMap((entry) => parseTalkReply(JSON.stringify([entry])));
-  return lines.length > 0 ? { ...rest, segments: lines } : rest;
+  const { segments, followUps, ...rest } = message;
+  const lines = Array.isArray(segments)
+    ? segments.flatMap((entry) => parseTalkReply(JSON.stringify([entry])))
+    : [];
+  const choices = cleanFollowUps(followUps);
+  return {
+    ...rest,
+    ...(lines.length > 0 ? { segments: lines } : {}),
+    ...(choices.length > 0 ? { followUps: choices } : {}),
+  };
 }
 
 function isMessage(value: unknown): value is TalkMessage {

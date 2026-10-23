@@ -7,6 +7,7 @@ import {
   lookupText,
   MAX_KEPT_MESSAGES,
   parseTalkReply,
+  parseTalkResponse,
   segmentsOf,
   recentHistory,
   TalkStore,
@@ -46,6 +47,9 @@ describe("what she is told when the author talks to her", () => {
     expect(prompt.systemPrompt).toContain("HOW YOU TALK.");
     expect(prompt.systemPrompt).toContain("No em dashes and no en dashes");
     expect(prompt.systemPrompt).toContain("say you have not read it");
+    expect(prompt.systemPrompt).toContain("point to the chapter and concrete detail");
+    expect(prompt.systemPrompt).toContain("Quote a few exact words");
+    expect(prompt.systemPrompt).toContain("up to two useful next-step choices");
     // She is not told what to look for in a passage: nothing here is being reviewed.
     expect(prompt.systemPrompt).not.toContain("Look for the places where a reader");
 
@@ -94,7 +98,7 @@ describe("her answer, as lines of dialogue", () => {
 
     expect(prompt.systemPrompt).toContain("you answer only as a list of lines");
     expect(prompt.systemPrompt).toContain("at most 160 characters");
-    expect(prompt.systemPrompt).toContain('{"lines": [{"say": string, "mood": string, "reaction": string|null}]}');
+    expect(prompt.systemPrompt).toContain('{"lines": [{"say": string, "mood": string, "reaction": string|null}], "followUps": string[]}');
     expect(prompt.systemPrompt).toContain("idle_laughing: amused, laughing");
     expect(prompt.systemPrompt).not.toContain("passive_gaming");
     expect(prompt.systemPrompt).toContain("neutral, amused, laughing, thinking, surprised, weary, unbothered");
@@ -117,6 +121,24 @@ describe("her answer, as lines of dialogue", () => {
       { text: "Cut the second showing." },
     ]);
     expect(parseTalkReply('[{"say": "Hm.", "mood": "thinking"}]')).toEqual([{ text: "Hm.", mood: "thinking" }]);
+  });
+
+  it("parses optional follow-up choices, limits them, and ignores malformed choices", () => {
+    expect(parseTalkResponse(JSON.stringify({
+      lines: [{ say: "The quiet in Chapter 2 is doing real work.", mood: "thinking" }],
+      followUps: ["Show me the exact moment.", "Explore the alternative.", "A third choice", 7],
+    }))).toEqual({
+      segments: [{ text: "The quiet in Chapter 2 is doing real work.", mood: "thinking" }],
+      followUps: ["Show me the exact moment.", "Explore the alternative."],
+    });
+    expect(parseTalkResponse(JSON.stringify({ lines: ["Still fine."], followUps: "not a list" }))).toEqual({
+      segments: [{ text: "Still fine." }],
+      followUps: [],
+    });
+    expect(parseTalkResponse('{"lines":[{"say":"Cut off"}')).toEqual({
+      segments: [{ text: "Cut off" }],
+      followUps: [],
+    });
   });
 
   it("retains only allowed reaction IDs per dialogue line", () => {
@@ -146,7 +168,7 @@ describe("her answer, as lines of dialogue", () => {
     expect(parseTalkReply("   ")).toEqual([]);
     expect(
       parseTalkReply(JSON.stringify({ lines: Array.from({ length: 20 }, () => ({ say: "More." })) })),
-    ).toHaveLength(8);
+    ).toHaveLength(16);
   });
 
   it("shows an older reply, kept before she spoke in lines, as lines too", () => {
@@ -207,6 +229,24 @@ describe("where a conversation is kept", () => {
       JSON.stringify({ messages: [{ ...said("lyra", "Kept.", 1), segments: [{ text: "" }, 4, { mood: "x" }] }] }),
     );
     expect(await again.load("u.json")).toEqual([said("lyra", "Kept.", 1)]);
+  });
+
+  it("keeps follow-up choices on a reply and still reads older messages without them", async () => {
+    const { map, store } = files();
+    await store.add("t.json", {
+      ...said("lyra", "A considered answer.", 1),
+      segments: [{ text: "A considered answer." }],
+      followUps: ["Show me the passage.", "What else could work?"],
+    });
+
+    const again = new TalkStore({
+      read: (path) => Promise.resolve(map.get(path) ?? null),
+      write: () => Promise.resolve(),
+    });
+    expect((await again.load("t.json"))[0]!.followUps).toEqual(["Show me the passage.", "What else could work?"]);
+
+    map.set("old.json", JSON.stringify({ messages: [said("lyra", "An older reply.", 2)] }));
+    expect(await again.load("old.json")).toEqual([said("lyra", "An older reply.", 2)]);
   });
 
   it("starts again from a file it cannot read, keeping only what is a message", async () => {

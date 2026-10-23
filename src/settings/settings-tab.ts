@@ -336,6 +336,17 @@ export class LyraSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Learn from review decisions in this project")
+      .setDesc("Manual reviews may use brief summaries of resolved and dismissed comments from other notes in the same novel or folder. This does not affect live reviews.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.manualReview.learnFromFeedback).onChange((value) => {
+          void this.plugin.updateSettings((draft) => {
+            draft.manualReview.learnFromFeedback = value;
+          });
+        }),
+      );
+
+    new Setting(containerEl)
       .setName("Pause before she reads")
       .setDesc("Seconds without typing before a changed passage is read.")
       .addSlider((slider) =>

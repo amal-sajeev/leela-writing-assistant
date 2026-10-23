@@ -1,7 +1,14 @@
 import { isSettled } from "../comments/comment-state";
 import type { SensitivityPolicy } from "../reviewers/reviewer";
 import type { CommentCategory, ReviewComment, ReviewRequest } from "../types";
-import { CATEGORY_GUIDE, FINDING_DISCIPLINE, SEVERITY_GUIDE, type RenderedPrompt } from "./prompt-builder";
+import {
+  authorFeedbackGuidance,
+  CATEGORY_GUIDE,
+  FINDING_DISCIPLINE,
+  formatAuthorFeedback,
+  SEVERITY_GUIDE,
+  type RenderedPrompt,
+} from "./prompt-builder";
 import { reactionCatalogText } from "../companion/scene-assets";
 
 /** Builds the fiction review prompt and its JSON output contract. */
@@ -215,6 +222,8 @@ function systemPrompt(request: ReviewRequest, policy: SensitivityPolicy): string
       ? []
       : [`SELECTED ANALYSIS CHECKS (use only where the passage supports them):\n${request.analysisTechniques.map((item) => `- ${item}`).join("\n")}`]),
 
+    ...(authorFeedbackGuidance(request) === undefined ? [] : [authorFeedbackGuidance(request)!]),
+
     "ACTIVE REACTION CATALOG (choose one ID for each comment based on its tone; these are expression names only):\n" + reactionCatalogText(),
     `Match the expression to ${reviewer.name}'s tone, not the finding's severity. Use serious for ordinary critique; reserve concerned, sad, shocked, laughing, and celebratory expressions for moments that clearly earn them. Most notes should not look alarmed.`,
 
@@ -297,6 +306,11 @@ function userPrompt(request: ReviewRequest): string {
   if (open.length > 0) parts.push(section("EARLIER COMMENTS (do not repeat)", open.map(describe).join("\n")));
   if (settled.length > 0) {
     parts.push(section("SETTLED (the author has decided; do not raise again)", settled.map(describe).join("\n")));
+  }
+
+  const authorFeedback = formatAuthorFeedback(request);
+  if (authorFeedback !== undefined) {
+    parts.push(section("AUTHOR'S PAST DECISIONS (weak calibration context, not passage evidence)", authorFeedback));
   }
 
   if (request.beforeContext.trim().length > 0) {

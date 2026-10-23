@@ -16,6 +16,43 @@ export interface RenderedPrompt {
   userPrompt: string;
 }
 
+/** Instructions keep remembered decisions as weak calibration, never rules. */
+export function authorFeedbackGuidance(request: ReviewRequest): string | undefined {
+  const feedback = request.authorFeedback;
+  if (feedback === undefined || (feedback.resolved.length === 0 && feedback.dismissed.length === 0)) return undefined;
+
+  return [
+    "AUTHOR DECISION SIGNALS (from other notes, calibration only):",
+    "Resolved examples are findings the author addressed; this does not necessarily mean they liked the finding or want every similar issue raised.",
+    "Dismissed examples are findings the author set aside. Neither status is a hard rule, a factual claim, or a reason by itself to repeat or suppress feedback.",
+    "Treat these patterns only as weak preference signals. Follow the current review request, project instructions, and evidence in the passage first.",
+  ].join("\n");
+}
+
+/** Formats summaries without old anchors, excerpts, note paths, or stored metadata. */
+export function formatAuthorFeedback(request: ReviewRequest): string | undefined {
+  const feedback = request.authorFeedback;
+  if (feedback === undefined || (feedback.resolved.length === 0 && feedback.dismissed.length === 0)) return undefined;
+
+  const describe = (example: NonNullable<ReviewRequest["authorFeedback"]>["resolved"][number]): string => {
+    const kind = example.kind ?? "kind not recorded";
+    const rationale = example.rationale === undefined ? "" : ` Rationale: ${example.rationale}`;
+    return `- (${example.category}; ${kind}; ${example.severity}) ${example.body}${rationale}`;
+  };
+  const parts = [
+    ...(feedback.resolved.length === 0
+      ? []
+      : [
+          "Resolved: findings the author addressed (not necessarily findings they liked):",
+          ...feedback.resolved.map(describe),
+        ]),
+    ...(feedback.dismissed.length === 0
+      ? []
+      : ["Dismissed: findings the author set aside:", ...feedback.dismissed.map(describe)]),
+  ];
+  return parts.join("\n");
+}
+
 /**
  * One line per category. Each says what the problem looks like from the reader's
  * side, because a model finds "a reader loses track of who is speaking" more
@@ -133,6 +170,8 @@ function buildSystemPrompt(request: ReviewRequest, policy: SensitivityPolicy): s
       ? ["FACT-CHECK MODE: Separate an internal contradiction, an unsupported claim that needs a citation, and a claim that conflicts with source text included in the prompt. Use only supplied text as evidence. Without a cited source excerpt, flag a claim for checking; do not call it false from memory. Never invent a source, URL, date, or quotation."]
       : []),
 
+    ...(authorFeedbackGuidance(request) === undefined ? [] : [authorFeedbackGuidance(request)!]),
+
     rulesSection(reviewer.enabledCategories.includes("strength")),
 
     "ACTIVE REACTION CATALOG (choose one ID for each comment based on its tone; these are expression names only):\n" + reactionCatalogText(),
@@ -223,6 +262,11 @@ function buildUserPrompt(request: ReviewRequest): string {
         settled,
       ),
     );
+  }
+
+  const authorFeedback = formatAuthorFeedback(request);
+  if (authorFeedback !== undefined) {
+    parts.push(section("AUTHOR'S PAST DECISIONS (weak calibration context, not passage evidence)", authorFeedback));
   }
 
   if (request.beforeContext.trim().length > 0) {

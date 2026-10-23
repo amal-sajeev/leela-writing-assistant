@@ -75,6 +75,7 @@ export interface LyraSettings {
     unlimitedFindings: boolean;
     maximumFindings: number;
     factCheck: boolean;
+    learnFromFeedback: boolean;
   };
 
   context: {
@@ -195,6 +196,7 @@ export const DEFAULT_SETTINGS: LyraSettings = {
     unlimitedFindings: false,
     maximumFindings: 12,
     factCheck: false,
+    learnFromFeedback: true,
   },
 
   context: {
@@ -343,6 +345,7 @@ export function normalizeSettings(raw: unknown): LyraSettings {
       unlimitedFindings: asBoolean(manualReview.unlimitedFindings, defaults.manualReview.unlimitedFindings),
       maximumFindings: clampInt(manualReview.maximumFindings, 1, 20, defaults.manualReview.maximumFindings),
       factCheck: asBoolean(manualReview.factCheck, defaults.manualReview.factCheck),
+      learnFromFeedback: asBoolean(manualReview.learnFromFeedback, defaults.manualReview.learnFromFeedback),
     },
 
     persona: {

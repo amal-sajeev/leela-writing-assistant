@@ -223,6 +223,82 @@ describe("reading fiction as fiction", () => {
     expect(persona(quiet).enabledCategories).not.toContain("pacing");
     expect(persona(quiet).enabledCategories).toContain("dialogue");
   });
+
+  it("uses project decisions as weak, separate signals for manual reviews only", async () => {
+    const feedback = {
+      resolved: [
+        {
+          category: "clarity" as const,
+          kind: "craft" as const,
+          severity: "medium" as const,
+          body: "A repeated image was distracting in that scene.",
+          rationale: "It pulled focus from the character's decision.",
+        },
+      ],
+      dismissed: [
+        {
+          category: "clarity" as const,
+          kind: "taste" as const,
+          severity: "low" as const,
+          body: "The quiet beat may feel slow.",
+          rationale: "A pause can be deliberate.",
+        },
+      ],
+    };
+    const essay = settings((draft) => void (draft.persona.mode = "essay"));
+
+    for (const reviewSettings of [DEFAULT_SETTINGS, essay]) {
+      const seen: Array<{ system: string; user: string }> = [];
+      await reviewPassage({ ...input, mode: "quick", authorFeedback: feedback }, reviewSettings, provider({ seen }));
+
+      expect(seen[0]!.system).toContain("weak preference signals");
+      expect(seen[0]!.system).toContain("Follow the current review request, project instructions");
+      expect(seen[0]!.user).toContain("Resolved: findings the author addressed");
+      expect(seen[0]!.user).toContain("Dismissed: findings the author set aside");
+      expect(seen[0]!.user).toContain("A repeated image was distracting in that scene.");
+      expect(seen[0]!.user).toContain("The quiet beat may feel slow.");
+      expect(seen[0]!.user).toContain("Rationale: It pulled focus from the character's decision.");
+      expect(seen[0]!.user).not.toContain("OLD MANUSCRIPT EXCERPT");
+    }
+
+    const live: Array<{ system: string; user: string }> = [];
+    await reviewPassage({ ...input, limit: 1, authorFeedback: feedback }, DEFAULT_SETTINGS, provider({ seen: live }));
+    expect(live[0]!.system).not.toContain("AUTHOR DECISION SIGNALS");
+    expect(live[0]!.user).not.toContain("AUTHOR'S PAST DECISIONS");
+
+    const quote = "a sudden surge of grief";
+    const settled: ReviewComment = {
+      id: "settled-in-this-note",
+      filePath: FILE,
+      reviewerId: "lyra",
+      category: "emotion",
+      kind: "craft",
+      severity: "medium",
+      confidence: 0.9,
+      anchor: createAnchor(SCENE, SCENE.indexOf(quote), SCENE.indexOf(quote) + quote.length),
+      body: "The grief arrives with nothing leading to it.",
+      status: "dismissed",
+      createdAt: 1,
+      updatedAt: 1,
+      sourceRevisionHash: "old-revision",
+      thread: [],
+    };
+    const repeated = await reviewPassage(
+      { ...input, mode: "quick", existing: [settled], authorFeedback: feedback },
+      DEFAULT_SETTINGS,
+      provider({
+        comments: [{
+          quote,
+          category: "emotion",
+          kind: "craft",
+          severity: "medium",
+          confidence: 0.9,
+          body: "The grief arrives with nothing leading to it.",
+        }],
+      }),
+    );
+    expect(repeated.comments).toEqual([]);
+  });
 });
 
 describe("the story brief and its canon", () => {

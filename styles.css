@@ -1232,6 +1232,31 @@
   resize: none;
 }
 
+.lyra__talkchoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lyra__talkchoices[hidden] {
+  display: none;
+}
+
+.lyra .lyra__talkchoices .lyra__talkchoice {
+  max-width: 100%;
+  padding: 2px 7px;
+  background-color: transparent;
+  box-shadow: 0 0 0 1px var(--lyra-cream-dim);
+  color: var(--lyra-cream);
+  text-align: left;
+  white-space: normal;
+}
+
+.lyra .lyra__talkchoices .lyra__talkchoice:hover {
+  background-color: rgb(159 232 255 / 14%);
+  box-shadow: 0 0 0 1px var(--lyra-cyan);
+}
+
 .lyra__talkbox .lyra__actions {
   justify-content: flex-end;
 }

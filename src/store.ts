@@ -61,6 +61,16 @@ export class NoteStore {
     return this.notes.get(filePath) ?? [];
   }
 
+  /** A detached, read-only snapshot of comments indexed by note path. */
+  commentsByNote(): ReadonlyMap<string, readonly ReviewComment[]> {
+    return new Map(
+      [...this.notes].map(([filePath, comments]) => [
+        filePath,
+        comments.map((comment) => structuredClone(comment)),
+      ]),
+    );
+  }
+
   archiveStats(): ArchiveStats {
     const notes = Object.fromEntries(this.notes);
     const comments = [...this.notes.values()].reduce((total, entries) => total + entries.length, 0);

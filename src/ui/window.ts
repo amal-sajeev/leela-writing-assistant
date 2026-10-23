@@ -220,6 +220,7 @@ export class Companion {
   private talkBox: HTMLElement | null = null;
   private talkHead: HTMLElement | null = null;
   private talkNote: HTMLElement | null = null;
+  private talkChoices: HTMLElement | null = null;
   private talkInput: HTMLTextAreaElement | null = null;
   private talkSend: HTMLButtonElement | null = null;
   private talkClear: HTMLButtonElement | null = null;
@@ -1052,6 +1053,7 @@ export class Companion {
       this.talkBox = null;
       this.talkHead = null;
       this.talkNote = null;
+      this.talkChoices = null;
       this.talkInput = null;
       this.talkSend = null;
       this.talkClear = null;
@@ -1084,6 +1086,8 @@ export class Companion {
       this.talkBox = box;
       this.talkHead = box.createDiv({ cls: "lyra__talkhead" });
       this.talkNote = box.createDiv({ cls: "lyra__talknote" });
+      this.talkChoices = box.createDiv({ cls: "lyra__talkchoices" });
+      this.talkChoices.setAttribute("aria-label", "Suggested follow-ups");
 
       const input = box.createEl("textarea", { cls: "lyra__input lyra__talkinput" });
       input.rows = 2;
@@ -1091,6 +1095,7 @@ export class Companion {
       input.value = this.talkDraft;
       input.addEventListener("input", () => {
         this.talkDraft = input.value;
+        this.paintTalkChoices();
       });
       input.addEventListener("keydown", (event: KeyboardEvent) => {
         if (event.key === "Escape") {
@@ -1279,10 +1284,29 @@ export class Companion {
   private markTalkMore(): void {
     const more = this.talkBelow() > 1 || this.talkAt < this.talkLines().length - 1;
     this.talkMore?.toggleClass("is-hidden", !more || this.talkWaiting);
+    this.paintTalkChoices();
 
     // Making the box taller is only offered when the line does not fit in it.
     const fits = this.talkBelow() <= 1 && (this.talkText?.scrollTop ?? 0) <= 1;
     this.talkSize?.toggleClass("is-hidden", fits && !this.talkExpanded);
+  }
+
+  /** Choices appear only after the latest reply has been read through its last beat. */
+  private paintTalkChoices(): void {
+    const container = this.talkChoices;
+    if (container === null) return;
+
+    container.empty();
+    const latest = this.talkHistory.at(-1);
+    const isAtEnd = this.talkAt === this.talkLines().length - 1;
+    const fullyRead = this.talkTyped === null && this.talkBelow() <= 1;
+    const choices = !this.talkWaiting && this.talkDraft.trim().length === 0 && isAtEnd && fullyRead && latest?.who === "lyra"
+      ? latest.followUps ?? []
+      : [];
+    container.hidden = choices.length === 0;
+    for (const choice of choices) {
+      this.action(container, choice, () => this.sendTalk(choice)).addClass("lyra__talkchoice");
+    }
   }
 
   /**
@@ -1341,9 +1365,9 @@ export class Companion {
     this.markTalkMore();
   }
 
-  private sendTalk(): void {
+  private sendTalk(suggestedText?: string): void {
     const scope = this.talkScope;
-    const text = this.talkDraft.trim();
+    const text = suggestedText?.trim() ?? this.talkDraft.trim();
     if (scope === null || this.talkWaiting || text.length === 0) return;
 
     this.talkWaiting = true;

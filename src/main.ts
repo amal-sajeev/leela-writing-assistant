@@ -4,7 +4,7 @@ import {
   buildTalkPrompt,
   clip,
   lookupText,
-  parseTalkReply,
+  parseTalkResponse,
   TALK_TOKEN_BUDGET,
   TalkStore,
   type TalkMessage,
@@ -38,7 +38,8 @@ import { ProviderRegistry } from "./providers/provider-registry";
 import { obsidianTransport } from "./providers/transport";
 import { example, exampleSpan, explain, reply, type InteractionResult } from "./review/interactions";
 import type { RenderedPrompt } from "./review/prompt-builder";
-import { mergeReview, reviewPassage, voiceOf } from "./review/review";
+import { collectReviewDecisionFeedback, reviewProjectKey } from "./review/decision-feedback";
+import { mergeReview, persona, reviewPassage, voiceOf } from "./review/review";
 import { planReviewJobs } from "./review/review-orchestrator";
 import { sceneAround } from "./review/scene";
 import {
@@ -401,6 +402,24 @@ export default class LyraPlugin extends Plugin {
     this.companion.setActivity("reading");
 
     try {
+      const story = await this.story(file, around(text, start, end));
+      const enabledCategories = persona(this.prefs).enabledCategories;
+      if (
+        story.outline !== undefined &&
+        this.prefs.persona.mode === "fiction" &&
+        !this.prefs.ignoredCategories.includes("arc")
+      ) {
+        enabledCategories.push("arc");
+      }
+      const authorFeedback = this.prefs.manualReview.learnFromFeedback
+        ? collectReviewDecisionFeedback(
+            this.store.commentsByNote(),
+            file.path,
+            (notePath) => reviewProjectKey(notePath, this.keeper.novelOf(notePath)),
+            enabledCategories,
+          )
+        : undefined;
+
       const outcome = await reviewPassage(
         {
           filePath: file.path,
@@ -416,13 +435,14 @@ export default class LyraPlugin extends Plugin {
           ...(this.prefs.manualReview.unlimitedFindings
             ? { unlimitedFindings: true }
             : { limit: this.prefs.manualReview.maximumFindings }),
+          ...(authorFeedback === undefined ? {} : { authorFeedback }),
           onProgress: (state) => {
             if (this.activeManualReview?.id !== runId) return;
             progress.setMessage(
               `${this.prefs.companion.name}: ${state.phase} · part ${state.part} of ${state.parts} · ${state.findings} found`,
             );
           },
-          ...(await this.story(file, around(text, start, end))),
+          ...story,
         },
         this.prefs,
         this.providers.require(this.prefs.provider),
@@ -745,7 +765,8 @@ export default class LyraPlugin extends Plugin {
         .require(this.prefs.provider)
         .replyToComment({ ...prompt, maxTokens: TALK_TOKEN_BUDGET });
       // Lines of dialogue, each held to the same rule as anything else she says.
-      const segments = parseTalkReply(raw).map((line) => ({ ...line, text: withoutDashes(line.text) }));
+      const parsed = parseTalkResponse(raw);
+      const segments = parsed.segments.map((line) => ({ ...line, text: withoutDashes(line.text) }));
       if (segments.length === 0) return { ok: false, reason: "She had nothing to say to that. Try again." };
 
       const mine: TalkMessage = { who: "author", text: clip(text), at: Date.now() };
@@ -753,6 +774,9 @@ export default class LyraPlugin extends Plugin {
         who: "lyra",
         text: segments.map((line) => line.text).join(" "),
         segments,
+        ...(parsed.followUps.length > 0
+          ? { followUps: parsed.followUps.map(withoutDashes).filter((choice) => choice.trim().length > 0) }
+          : {}),
         at: Date.now(),
       };
       await this.talks.add(scope.path, mine, reply);

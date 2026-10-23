@@ -184,6 +184,21 @@ export interface RetrievedContext {
   heading?: string;
 }
 
+/** A compact summary of an author's decision about a review finding. */
+export interface ReviewDecisionExample {
+  category: CommentCategory;
+  kind?: CommentKind;
+  severity: CommentSeverity;
+  body: string;
+  rationale?: string;
+}
+
+/** Kept separate because resolving and dismissing a finding mean different things. */
+export interface ReviewDecisionFeedback {
+  resolved: readonly ReviewDecisionExample[];
+  dismissed: readonly ReviewDecisionExample[];
+}
+
 export interface ReviewRequest {
   filePath: string;
   documentTitle: string;
@@ -206,6 +221,8 @@ export interface ReviewRequest {
   /** The shape of the whole story: the author's plan, and the outline kept from the chapters. */
   storyOutline?: string;
   existingNearbyComments?: ReviewComment[];
+  /** Weak calibration signals from other notes in the same novel or folder. */
+  authorFeedback?: ReviewDecisionFeedback;
   reviewer: ReviewerProfile;
 }
 

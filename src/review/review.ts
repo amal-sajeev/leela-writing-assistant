@@ -7,7 +7,7 @@ import { redactKnownSecrets } from "../privacy/redaction";
 import type { AIProvider } from "../providers/provider";
 import { sensitivityPolicy } from "../reviewers/reviewer";
 import { focusFor, providerApiKeys, type LyraSettings, type Tone } from "../settings/settings";
-import type { CommentCategory, RetrievedContext, ReviewComment, ReviewerProfile, ReviewDepth } from "../types";
+import type { CommentCategory, RetrievedContext, ReviewComment, ReviewDecisionFeedback, ReviewerProfile, ReviewDepth } from "../types";
 import { createId } from "../utils/ids";
 import { hashText } from "../utils/hash";
 import { normalizeForComparison } from "../utils/text";
@@ -136,6 +136,8 @@ export interface PassageReviewInput {
   unlimitedFindings?: boolean;
   /** Per-request ceiling. The run-level limit is applied after the passes merge. */
   maxCommentsPerRequest?: number;
+  /** Other-note decisions are used for manual reviews only. */
+  authorFeedback?: ReviewDecisionFeedback;
   /** Focus for a bounded analysis pass. */
   analysisFocus?: string;
   factCheck?: boolean;
@@ -319,6 +321,9 @@ async function reviewSinglePassage(
       analysisTechniques: selectAnalysisTechniques(settings.persona.mode, reviewer.enabledCategories, input.mode ?? "quick"),
       ...(input.factCheck === true && settings.persona.mode === "essay" ? { factCheckMode: true } : {}),
       ...(outline.length > 0 ? { storyOutline: outline } : {}),
+      ...(input.mode !== undefined && input.authorFeedback !== undefined
+        ? { authorFeedback: input.authorFeedback }
+        : {}),
       reviewer,
     },
     policy,

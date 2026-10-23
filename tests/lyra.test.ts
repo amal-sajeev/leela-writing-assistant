@@ -216,9 +216,11 @@ describe("settings", () => {
       unlimitedFindings: true,
       maximumFindings: 20,
       factCheck: false,
+      learnFromFeedback: true,
     });
     expect(settings.persona.mode).toBe("essay");
     expect(normalizeSettings({}).manualReview).toEqual(DEFAULT_SETTINGS.manualReview);
+    expect(normalizeSettings({ manualReview: { learnFromFeedback: false } }).manualReview.learnFromFeedback).toBe(false);
   });
 
   it("give her the strength category only when praise is on", () => {
@@ -380,6 +382,18 @@ describe("the saved comments", () => {
     expect(store.comments(FILE).map((entry) => entry.id)).toEqual(["c1"]);
   });
 
+  it("returns a detached, read-only snapshot of comments grouped by note", async () => {
+    const store = new NoteStore(memory());
+    await store.load();
+    store.set(FILE, [comment()]);
+
+    const snapshot = store.commentsByNote();
+    snapshot.get(FILE)![0]!.body = "changed outside the store";
+
+    expect(store.comments(FILE)[0]!.body).toBe(comment().body);
+    expect(snapshot.get(FILE)).toHaveLength(1);
+  });
+
   it("reports archive size without exposing comment text", async () => {
     const store = new NoteStore(memory());
     await store.load();
@@ -523,6 +537,7 @@ describe("her window", () => {
   let talkMemory: string;
   let talkFails: boolean;
   let talkAnswer: Array<{ text: string; mood?: "amused" | "thinking" | "surprised"; reaction?: ActiveReaction }> | null;
+  let talkFollowUps: string[];
 
   const extras = () => ({
     reviewScene: () => {
@@ -562,7 +577,13 @@ describe("her window", () => {
         const reply =
           talkAnswer === null
             ? { who: "lyra" as const, text: `You said: ${text}`, at: 2 }
-            : { who: "lyra" as const, text: talkAnswer.map((line) => line.text).join(" "), segments: talkAnswer, at: 2 };
+            : {
+                who: "lyra" as const,
+                text: talkAnswer.map((line) => line.text).join(" "),
+                segments: talkAnswer,
+                ...(talkFollowUps.length > 0 ? { followUps: talkFollowUps } : {}),
+                at: 2,
+              };
         talked.push({ who: "author", text, at: 1 }, reply);
         return Promise.resolve({ ok: true as const, reply });
       },
@@ -622,6 +643,7 @@ describe("her window", () => {
     talkMemory = "";
     talkFails = false;
     talkAnswer = null;
+    talkFollowUps = [];
     settings = structuredClone(DEFAULT_SETTINGS);
     comments = [comment({ id: "existing" })];
     shown = [];
@@ -1140,6 +1162,31 @@ describe("her window", () => {
       // Back on what they said themselves, she is listening.
       root().find("lyra__dialog")!.all().find((element) => element.getAttribute("aria-label") === "What was said before this")!.fire("click");
       expect(dialog()!.content()).toContain("It's the photograph.");
+    });
+
+    it("shows suggested next turns after the final beat and sends a selected choice as a normal turn", async () => {
+      talkAnswer = [
+        { text: "The pause gives the reveal room to land." },
+        { text: "I would keep it before the explanation catches up." },
+      ];
+      talkFollowUps = ["Show me the moment that supports that.", "Explore another version."];
+      companion.enterTalk();
+      await settle();
+
+      say("Can we look at why the reveal works?");
+      await settle();
+      expect(root().find("lyra__talkchoice")).toBeUndefined();
+
+      // Choices stay hidden until the last dialogue beat.
+      dialog()!.fire("click");
+      const choice = root().find("lyra__talkchoice")!;
+      expect(choice.text).toBe("Show me the moment that supports that.");
+      choice.fire("click");
+      await settle();
+
+      expect(talked.filter((message) => message.who === "author").at(-1)?.text)
+        .toBe("Show me the moment that supports that.");
+      expect(root().find("lyra__talkinput")!.value).toBe("");
     });
 
     it("gives back what was typed when she could not answer", async () => {
