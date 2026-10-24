@@ -178,6 +178,7 @@ export const DEFAULT_SETTINGS: LyraSettings = {
     openai: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.openai, fallbackModels: [] },
     anthropic: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.anthropic, fallbackModels: [] },
     gemini: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.gemini, fallbackModels: [] },
+    openrouter: { apiKey: "", fallbackKeys: [], model: DEFAULT_MODELS.openrouter, fallbackModels: [] },
   },
 
   liveReview: {
@@ -325,6 +326,7 @@ export function normalizeSettings(raw: unknown): LyraSettings {
       openai: normalizeProvider(providers.openai, defaults.providers.openai),
       anthropic: normalizeProvider(providers.anthropic, defaults.providers.anthropic),
       gemini: normalizeProvider(providers.gemini, defaults.providers.gemini),
+      openrouter: normalizeProvider(providers.openrouter, defaults.providers.openrouter),
     },
 
     liveReview: {

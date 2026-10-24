@@ -397,6 +397,41 @@
   width: 100%;
 }
 
+.lyra-settings-fallbacks {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.lyra-settings-fallbacks > summary {
+  color: var(--text-normal);
+  cursor: pointer;
+  font-weight: var(--font-medium);
+  padding: 18px 0;
+}
+
+.lyra-settings-fallbacks__summary {
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+  font-weight: var(--font-normal);
+}
+
+.lyra-settings-fallbacks__description {
+  margin-bottom: 12px;
+}
+
+.lyra-settings__provider-status {
+  margin: -8px 0 12px;
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+}
+
+.lyra-settings__provider-status[hidden] {
+  display: none;
+}
+
+.lyra-settings__provider-status.is-error {
+  color: var(--text-error);
+}
+
 /*
  * The buttons painted into the frame, made to work: invisible areas over the
  * artwork, placed by percentage so they follow the window at any size.

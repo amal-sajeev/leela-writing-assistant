@@ -1,4 +1,4 @@
-import { Notice, PluginSettingTab, requireApiVersion, Setting, type App, type SettingDefinitionItem } from "obsidian";
+import { PluginSettingTab, requireApiVersion, Setting, type App, type SettingDefinitionItem } from "obsidian";
 
 import { DEFAULT_MODELS, PROVIDER_DISPLAY_NAMES } from "../constants";
 import type LyraPlugin from "../main";
@@ -26,10 +26,11 @@ function withSlot(values: readonly string[], index: number, value: string): stri
 }
 
 /**
- * One short page: who answers, when she reads, how she reads, how she shows up.
+ * One short page: provider, reviews, story memory, and window behavior.
  */
 export class LyraSettingTab extends PluginSettingTab {
   private readonly typing = new Map<string, Debounced<[(draft: LyraSettings) => void]>>();
+  private fallbackOptionsOpen = false;
 
   constructor(
     app: App,
@@ -88,8 +89,8 @@ export class LyraSettingTab extends PluginSettingTab {
     const scrollTop = containerEl.scrollTop;
     containerEl.empty();
     this.renderProvider(containerEl);
-    this.renderReading(containerEl);
-    this.renderNovels(containerEl);
+    this.renderReviews(containerEl);
+    this.renderStoryAndMemory(containerEl);
     this.renderWindow(containerEl);
     containerEl.scrollTop = scrollTop;
   }
@@ -102,7 +103,7 @@ export class LyraSettingTab extends PluginSettingTab {
   private renderProvider(containerEl: HTMLElement): void {
     const provider = this.settings.provider;
 
-    new Setting(containerEl).setName("Who answers").setHeading();
+    new Setting(containerEl).setName("Provider and model").setHeading();
 
     new Setting(containerEl)
       .setName("Provider")
@@ -122,8 +123,8 @@ export class LyraSettingTab extends PluginSettingTab {
       .setName(`${PROVIDER_DISPLAY_NAMES[provider]} API key`)
       .setDesc(
         requireApiVersion("1.11.4")
-          ? "Kept in Obsidian's secret storage, not in the plugin's own data file."
-          : "Kept in this vault's plugin data. Obsidian 1.11.4 or later would keep it in secret storage instead.",
+          ? "Saved in Obsidian's secret storage."
+          : "Saved with this vault's plugin settings. Obsidian 1.11.4 or later stores it separately.",
       )
       .addText((text) => {
         text.inputEl.type = "password";
@@ -138,35 +139,9 @@ export class LyraSettingTab extends PluginSettingTab {
           });
       });
 
-    for (let index = 0; index < MAX_FALLBACK_KEYS; index += 1) {
-      new Setting(containerEl)
-        .setName(`Fallback API key ${index + 1}`)
-        .setDesc(
-          index === 0
-            ? "Optional. Tried in order when the main key is rate-limited or rejected."
-            : "Optional.",
-        )
-        .addText((text) => {
-          text.inputEl.type = "password";
-          text.inputEl.autocomplete = "off";
-          text
-            .setPlaceholder("Paste another API key")
-            .setValue(this.settings.providers[provider].fallbackKeys[index] ?? "")
-            .onChange((value) => {
-              this.saveWhenTypingPauses(`fallbackKey:${provider}:${index}`, (draft) => {
-                draft.providers[provider].fallbackKeys = withSlot(
-                  draft.providers[provider].fallbackKeys,
-                  index,
-                  value.trim(),
-                );
-              });
-            });
-        });
-    }
-
     new Setting(containerEl)
       .setName("Model")
-      .setDesc("Any model name the provider accepts.")
+      .setDesc("Model ID accepted by this provider.")
       .addText((text) =>
         text
           .setPlaceholder(DEFAULT_MODELS[provider])
@@ -180,20 +155,87 @@ export class LyraSettingTab extends PluginSettingTab {
       .addButton((button) =>
         button.setButtonText("Test").onClick(async () => {
           button.setDisabled(true).setButtonText("Testing…");
+          testStatus.hidden = false;
+          testStatus.classList.remove("is-error");
+          testStatus.setText("Testing connection and model…");
           this.saveTypedNow();
           try {
             await this.plugin.providers.require(provider).validateConfiguration();
-            new Notice(`${PROVIDER_DISPLAY_NAMES[provider]} is reachable and a configured model works.`);
+            testStatus.setText(`${PROVIDER_DISPLAY_NAMES[provider]} is reachable and the configured model works.`);
           } catch (error) {
-            new Notice(describeProviderError(toProviderError(error), provider), 8000);
+            testStatus.classList.add("is-error");
+            testStatus.setText(describeProviderError(toProviderError(error), provider));
           } finally {
             button.setDisabled(false).setButtonText("Test");
           }
         }),
       );
 
+    const testStatus = containerEl.createDiv({
+      cls: "lyra-settings__provider-status",
+      attr: { role: "status", "aria-live": "polite", hidden: "true" },
+    });
+
+    const fallbacks = containerEl.createEl("details", { cls: "lyra-settings-fallbacks" });
+    fallbacks.open = this.fallbackOptionsOpen;
+    const summary = fallbacks.createEl("summary");
+    summary.createSpan({ text: "Fallback options" });
+    const summaryCounts = summary.createSpan({ cls: "lyra-settings-fallbacks__summary" });
+    const providerSettings = this.settings.providers[provider];
+    const fallbackKeyValues = Array.from(
+      { length: MAX_FALLBACK_KEYS },
+      (_, index) => providerSettings.fallbackKeys[index] ?? "",
+    );
+    const fallbackModelValues = Array.from(
+      { length: MAX_FALLBACK_MODELS },
+      (_, index) => providerSettings.fallbackModels[index] ?? "",
+    );
+    const updateSummaryCounts = (): void => {
+      const keyCount = fallbackKeyValues.filter((value) => value.trim().length > 0).length;
+      const modelCount = fallbackModelValues.filter((value) => value.trim().length > 0).length;
+      const keys = keyCount === 0 ? "no extra keys" : `${keyCount} extra key${keyCount === 1 ? "" : "s"}`;
+      const models = modelCount === 0 ? "no fallback models" : `${modelCount} fallback model${modelCount === 1 ? "" : "s"}`;
+      summaryCounts.setText(` · ${keys} · ${models}`);
+    };
+    updateSummaryCounts();
+    fallbacks.addEventListener("toggle", () => {
+      this.fallbackOptionsOpen = fallbacks.open;
+    });
+    fallbacks.createDiv({
+      cls: "setting-item-description lyra-settings-fallbacks__description",
+      text: "Extra keys are tried after the main key is rejected or rate-limited. Extra models are tried when the main model is unavailable.",
+    });
+
+    for (let index = 0; index < MAX_FALLBACK_KEYS; index += 1) {
+      new Setting(fallbacks)
+        .setName(`Fallback API key ${index + 1}`)
+        .setDesc(
+          index === 0
+            ? "Tried in order when the main key is rate-limited or rejected."
+            : "Optional.",
+        )
+        .addText((text) => {
+          text.inputEl.type = "password";
+          text.inputEl.autocomplete = "off";
+          text
+            .setPlaceholder("Paste another API key")
+            .setValue(fallbackKeyValues[index] ?? "")
+            .onChange((value) => {
+              fallbackKeyValues[index] = value.trim();
+              updateSummaryCounts();
+              this.saveWhenTypingPauses(`fallbackKey:${provider}:${index}`, (draft) => {
+                draft.providers[provider].fallbackKeys = withSlot(
+                  draft.providers[provider].fallbackKeys,
+                  index,
+                  value.trim(),
+                );
+              });
+            });
+        });
+    }
+
     for (let index = 0; index < MAX_FALLBACK_MODELS; index += 1) {
-      new Setting(containerEl)
+      new Setting(fallbacks)
         .setName(`Fallback model ${index + 1}`)
         .setDesc(
           index === 0
@@ -203,8 +245,10 @@ export class LyraSettingTab extends PluginSettingTab {
         .addText((text) =>
           text
             .setPlaceholder("Optional")
-            .setValue(this.settings.providers[provider].fallbackModels[index] ?? "")
+            .setValue(fallbackModelValues[index] ?? "")
             .onChange((value) => {
+              fallbackModelValues[index] = value.trim();
+              updateSummaryCounts();
               this.saveWhenTypingPauses(`fallbackModel:${provider}:${index}`, (draft) => {
                 draft.providers[provider].fallbackModels = withSlot(
                   draft.providers[provider].fallbackModels,
@@ -217,16 +261,16 @@ export class LyraSettingTab extends PluginSettingTab {
     }
   }
 
-  private renderReading(containerEl: HTMLElement): void {
+  private renderReviews(containerEl: HTMLElement): void {
     const name = this.settings.companion.name;
+    const fictionMode = this.settings.persona.mode === "fiction";
 
-    new Setting(containerEl).setName("How she reads").setHeading();
+    new Setting(containerEl).setName("Reviews").setHeading();
+    new Setting(containerEl).setName("Style and focus").setHeading();
 
     new Setting(containerEl)
       .setName("What you are writing")
-      .setDesc(
-        "Fiction: she reads for character, dialogue, pacing, point of view and feeling, and asks rather than corrects where a choice may be deliberate. Essay: she reads for clarity, reasoning and evidence.",
-      )
+      .setDesc("Choose Fiction or Essays, articles and notes. This changes what Lyra looks for.")
       .addDropdown((dropdown) =>
         dropdown
           .addOption("fiction", "Fiction")
@@ -259,9 +303,7 @@ export class LyraSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Talk in character")
-      .setDesc(
-        `On, ${name} talks to you the way she would across a table: informal, dry, unimpressed, a little teasing. Off, she is plain and neutral. Either way she finds the same things.`,
-      )
+      .setDesc(`On, ${name} speaks informally and in character. Off, she uses a plain, neutral voice.`)
       .addToggle((toggle) =>
         toggle.setValue(this.settings.persona.inCharacter).onChange((value) => {
           void this.plugin.updateSettings((draft) => {
@@ -271,21 +313,52 @@ export class LyraSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Read along as I write")
-      .setDesc(
-        `On, ${name} reads each passage after you pause on it. Off, nothing is sent until you select text and ask.`,
-      )
+      .setName("How much she flags")
+      .setDesc("Left, she flags only serious problems. Right, she includes smaller issues too.")
+      .addSlider((slider) =>
+        slider
+          .setLimits(0, 1, 0.05)
+          .setValue(this.settings.persona.pickiness)
+          .onChange((value) => {
+            void this.plugin.updateSettings((draft) => {
+              draft.persona.pickiness = value;
+            });
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Say when something works")
+      .setDesc("At most one compliment per reading, with a reason.")
       .addToggle((toggle) =>
-        toggle.setValue(this.settings.liveReview.enabled).onChange((value) => {
+        toggle.setValue(this.settings.persona.praise).onChange((value) => {
           void this.plugin.updateSettings((draft) => {
-            draft.liveReview.enabled = value;
+            draft.persona.praise = value;
           });
         }),
       );
 
     new Setting(containerEl)
+      .setName("What she looks for")
+      .setDesc("Write your own review guidance. Leave empty to use the default for the selected writing type.")
+      .addTextArea((area) => {
+        area.inputEl.rows = 5;
+        area.inputEl.addClass("lyra-settings__focus");
+        area
+          .setPlaceholder(fictionMode ? DEFAULT_FICTION_FOCUS : DEFAULT_ESSAY_FOCUS)
+          .setValue(this.settings.persona.focus)
+          .onChange((value) => {
+            this.saveWhenTypingPauses("focus", (draft) => {
+              draft.persona.focus = value;
+            });
+          });
+      });
+
+    new Setting(containerEl).setName("Manual reviews").setHeading();
+
+    let setFindingLimitDisabled = (_disabled: boolean): void => undefined;
+    new Setting(containerEl)
       .setName("Manual review depth")
-      .setDesc("Quick is one pass. Standard adds a focused pass for longer selections. Exhaustive checks overlapping sections for structure, continuity, clarity, and prose.")
+      .setDesc("Quick is one pass; deeper reviews add focused passes and broader checks.")
       .addDropdown((dropdown) =>
         dropdown
           .addOption("quick", "Quick read")
@@ -300,44 +373,50 @@ export class LyraSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Unlimited findings in manual reviews")
-      .setDesc("No findings-count cap. Reviews still have request, context, and time limits. Live review stays at one finding per pause.")
+      .setName("Unlimited findings")
+      .setDesc("Remove the finding-count cap for manual reviews. Request and time limits still apply.")
       .addToggle((toggle) =>
         toggle.setValue(this.settings.manualReview.unlimitedFindings).onChange((value) => {
           void this.plugin.updateSettings((draft) => {
             draft.manualReview.unlimitedFindings = value;
           });
+          setFindingLimitDisabled(value);
         }),
       );
 
     new Setting(containerEl)
       .setName("Manual finding limit")
-      .setDesc("Used when unlimited findings are off.")
-      .addSlider((slider) =>
+      .setDesc("Applies when unlimited findings is off.")
+      .addSlider((slider) => {
         slider
           .setLimits(1, 20, 1)
           .setValue(this.settings.manualReview.maximumFindings)
+          .setDisabled(this.settings.manualReview.unlimitedFindings)
           .onChange((value) => {
             void this.plugin.updateSettings((draft) => {
               draft.manualReview.maximumFindings = Math.round(value);
+            });
+          });
+        setFindingLimitDisabled = (disabled) => slider.setDisabled(disabled);
+      });
+
+    new Setting(containerEl)
+      .setName("Fact-check essay claims")
+      .setDesc("Flags internal contradictions and claims that need sources. Lyra does not browse the web.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.settings.manualReview.factCheck)
+          .setDisabled(fictionMode)
+          .onChange((value) => {
+            void this.plugin.updateSettings((draft) => {
+              draft.manualReview.factCheck = value;
             });
           }),
       );
 
     new Setting(containerEl)
-      .setName("Fact-check claims during manual reviews")
-      .setDesc("For essay reviews, flags internal contradictions and claims that need sources. Lyra does not fetch the web or call a claim false from memory.")
-      .addToggle((toggle) =>
-        toggle.setValue(this.settings.manualReview.factCheck).onChange((value) => {
-          void this.plugin.updateSettings((draft) => {
-            draft.manualReview.factCheck = value;
-          });
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Learn from review decisions in this project")
-      .setDesc("Manual reviews may use brief summaries of resolved and dismissed comments from other notes in the same novel or folder. This does not affect live reviews.")
+      .setName("Learn from review decisions")
+      .setDesc("Manual reviews can use brief resolved or dismissed feedback from other notes in this folder or novel.")
       .addToggle((toggle) =>
         toggle.setValue(this.settings.manualReview.learnFromFeedback).onChange((value) => {
           void this.plugin.updateSettings((draft) => {
@@ -346,50 +425,13 @@ export class LyraSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl)
-      .setName("Pause before she reads")
-      .setDesc("Seconds without typing before a changed passage is read.")
-      .addSlider((slider) =>
-        slider
-          .setLimits(SETTING_LIMITS.debounceMs.min / 1000, SETTING_LIMITS.debounceMs.max / 1000, 0.5)
-          .setValue(this.settings.liveReview.debounceMs / 1000)
-          .onChange((value) => {
-            void this.plugin.updateSettings((draft) => {
-              draft.liveReview.debounceMs = Math.round(value * 1000);
-            });
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName("How much she lets pass")
-      .setDesc("Left, she speaks only about serious problems. Right, she mentions small ones too.")
-      .addSlider((slider) =>
-        slider
-          .setLimits(0, 1, 0.05)
-          .setValue(this.settings.persona.pickiness)
-          .onChange((value) => {
-            void this.plugin.updateSettings((draft) => {
-              draft.persona.pickiness = value;
-            });
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName("Say when something works")
-      .setDesc("At most one compliment per reading, and only with a reason.")
-      .addToggle((toggle) =>
-        toggle.setValue(this.settings.persona.praise).onChange((value) => {
-          void this.plugin.updateSettings((draft) => {
-            draft.persona.praise = value;
-          });
-        }),
-      );
+    new Setting(containerEl).setName("Review comments").setHeading();
 
     const ignored = this.settings.ignoredCategories;
     if (ignored.length > 0) {
       const row = new Setting(containerEl)
-        .setName("What she no longer mentions")
-        .setDesc("Press one to let her raise it again.");
+        .setName("Topics she skips")
+        .setDesc("Select a topic to let her raise it again.");
 
       for (const category of ignored) {
         row.addButton((button) =>
@@ -408,34 +450,55 @@ export class LyraSettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
-      .setName("What she looks for")
-      .setDesc("In your own words. Leave empty to go back to the default.")
-      .addTextArea((area) => {
-        area.inputEl.rows = 5;
-        area.inputEl.addClass("lyra-settings__focus");
-        area
-          .setPlaceholder(
-            this.settings.persona.mode === "fiction" ? DEFAULT_FICTION_FOCUS : DEFAULT_ESSAY_FOCUS,
-          )
-          .setValue(this.settings.persona.focus)
+      .setName("Underline commented passages")
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.underline).onChange((value) => {
+          void this.plugin.updateSettings((draft) => {
+            draft.underline = value;
+          });
+        }),
+      );
+
+    new Setting(containerEl).setName("Read along").setHeading();
+
+    let setPauseDisabled = (_disabled: boolean): void => undefined;
+    new Setting(containerEl)
+      .setName("Read along as I write")
+      .setDesc("On, Lyra reviews changed passages after a pause. Automatic story notes are controlled separately below.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.liveReview.enabled).onChange((value) => {
+          void this.plugin.updateSettings((draft) => {
+            draft.liveReview.enabled = value;
+          });
+          setPauseDisabled(!value);
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Pause before a review")
+      .setDesc("Seconds without typing before Lyra reviews the changed passage.")
+      .addSlider((slider) => {
+        slider
+          .setLimits(SETTING_LIMITS.debounceMs.min / 1000, SETTING_LIMITS.debounceMs.max / 1000, 0.5)
+          .setValue(this.settings.liveReview.debounceMs / 1000)
+          .setDisabled(!this.settings.liveReview.enabled)
           .onChange((value) => {
-            this.saveWhenTypingPauses("focus", (draft) => {
-              draft.persona.focus = value;
+            void this.plugin.updateSettings((draft) => {
+              draft.liveReview.debounceMs = Math.round(value * 1000);
             });
           });
+        setPauseDisabled = (disabled) => slider.setDisabled(disabled);
       });
   }
 
-  private renderNovels(containerEl: HTMLElement): void {
+  private renderStoryAndMemory(containerEl: HTMLElement): void {
     const name = this.settings.companion.name;
 
-    new Setting(containerEl).setName("Novels").setHeading();
+    new Setting(containerEl).setName("Story and chat memory").setHeading();
 
     new Setting(containerEl)
       .setName("Keep notes on the story")
-      .setDesc(
-        `A folder with a story brief in it is a novel, and the notes directly in it are its chapters. On, ${name} reads a chapter a few minutes after you stop changing it and keeps notes on characters, places, the timeline and open threads in a “Lyra notes” folder there. Each changed chapter is sent to your provider, without asking each time. She never reads more than three chapters unasked.`,
-      )
+      .setDesc(`When enabled, ${name} reads changed chapters in folders with a story brief after a short pause and updates story notes. Chapter text is sent to your provider automatically, up to three chapters per pass.`)
       .addToggle((toggle) =>
         toggle.setValue(this.settings.story.keepNotes).onChange((value) => {
           void this.plugin.updateSettings((draft) => {
@@ -446,7 +509,7 @@ export class LyraSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Remember chats between sessions")
-      .setDesc("Off, saved chats and saved memory stop being sent. New messages and memory edits stay in memory until Obsidian closes; saved files remain until you clear them in the chat.")
+      .setDesc("On, saved chats and memory can be sent in later chats. Off, saved files remain locally but are not sent; new activity stays in memory until Obsidian closes.")
       .addToggle((toggle) =>
         toggle.setValue(this.settings.story.rememberConversations).onChange((value) => {
           void this.plugin.updateSettings((draft) => {
@@ -458,7 +521,8 @@ export class LyraSettingTab extends PluginSettingTab {
 
   private renderWindow(containerEl: HTMLElement): void {
 
-    new Setting(containerEl).setName("Her window").setHeading();
+    new Setting(containerEl).setName("Lyra’s window").setHeading();
+    new Setting(containerEl).setName("Position and behavior").setHeading();
 
     new Setting(containerEl)
       .setName("Where she stands")
@@ -515,6 +579,8 @@ export class LyraSettingTab extends PluginSettingTab {
           }),
       );
 
+    new Setting(containerEl).setName("Appearance").setHeading();
+
     new Setting(containerEl)
       .setName("Old television")
       .setDesc(
@@ -548,14 +614,5 @@ export class LyraSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl)
-      .setName("Underline what she commented on")
-      .addToggle((toggle) =>
-        toggle.setValue(this.settings.underline).onChange((value) => {
-          void this.plugin.updateSettings((draft) => {
-            draft.underline = value;
-          });
-        }),
-      );
   }
 }

@@ -6,7 +6,7 @@ import {
   parseReviewComments,
   parseSuggestedFix,
 } from "../review/response-parser";
-import type { DocumentReviewResult, ReviewResult, SuggestedFix } from "../types";
+import type { DocumentReviewResult, ProviderId, ReviewResult, SuggestedFix } from "../types";
 import type { Logger } from "../utils/logger";
 import {
   FIX_TOKEN_BUDGET,
@@ -46,23 +46,30 @@ export interface OpenAIProviderDeps {
   config: () => ProviderRequestConfig;
   transport: HttpTransport;
   logger?: Logger;
+  /** Identity and defaults for another provider with OpenAI-compatible APIs. */
+  providerId?: ProviderId;
+  displayName?: string;
+  defaultBaseUrl?: string;
 }
 
 export class OpenAIProvider implements AIProvider {
-  readonly id = "openai" as const;
+  readonly id: ProviderId;
 
   /** Models that turned down a `temperature`, for as long as the plugin is loaded. */
   private readonly fixedSampling = new Set<string>();
-  readonly displayName = "OpenAI";
+  readonly displayName: string;
 
-  constructor(private readonly deps: OpenAIProviderDeps) {}
+  constructor(private readonly deps: OpenAIProviderDeps) {
+    this.id = deps.providerId ?? "openai";
+    this.displayName = deps.displayName ?? "OpenAI";
+  }
 
   async validateConfiguration(): Promise<void> {
     await this.withKeys(async (config) => {
       // A model listing checks the key and reachability without spending tokens.
       await sendJson<unknown>(
         {
-          url: `${baseUrl(config)}/models`,
+          url: `${baseUrl(config, this.deps.defaultBaseUrl)}/models`,
           method: "GET",
           headers: this.headers(config, false),
         },
@@ -108,7 +115,7 @@ export class OpenAIProvider implements AIProvider {
         {
           messages: messages(input.systemPrompt, input.userPrompt),
           temperature: REPLY_TEMPERATURE,
-          max_completion_tokens: outputTokenBudget("openai", config.model, input.maxTokens ?? REPLY_TOKEN_BUDGET),
+          max_completion_tokens: outputTokenBudget(this.id, config.model, input.maxTokens ?? REPLY_TOKEN_BUDGET),
         },
         signal,
       );
@@ -129,7 +136,7 @@ export class OpenAIProvider implements AIProvider {
           {
             messages: messages(input.systemPrompt, input.userPrompt),
             temperature: REPLY_TEMPERATURE,
-            max_completion_tokens: outputTokenBudget("openai", config.model, FIX_TOKEN_BUDGET),
+            max_completion_tokens: outputTokenBudget(this.id, config.model, FIX_TOKEN_BUDGET),
             response_format: responseFormat(mode, "suggested_fix", suggestedFixJsonSchema()),
           },
           signal,
@@ -163,7 +170,7 @@ export class OpenAIProvider implements AIProvider {
       {
         messages: messages(input.systemPrompt, input.userPrompt),
         temperature: REVIEW_TEMPERATURE,
-        max_completion_tokens: outputTokenBudget("openai", config.model, reviewTokenBudget(input.maxComments)),
+        max_completion_tokens: outputTokenBudget(this.id, config.model, reviewTokenBudget(input.maxComments)),
         response_format: responseFormat(mode, "review", reviewJsonSchema()),
       },
       signal,
@@ -199,7 +206,7 @@ export class OpenAIProvider implements AIProvider {
       {
         messages: messages(input.systemPrompt, input.userPrompt),
         temperature: REVIEW_TEMPERATURE,
-        max_completion_tokens: outputTokenBudget("openai", config.model, observationTokenBudget(input.maxObservations)),
+        max_completion_tokens: outputTokenBudget(this.id, config.model, observationTokenBudget(input.maxObservations)),
         response_format: responseFormat(
           mode,
           "document_observations",
@@ -263,11 +270,11 @@ export class OpenAIProvider implements AIProvider {
 
   private chatRequest(config: ProviderRequestConfig, body: Record<string, unknown>) {
     return {
-      url: `${baseUrl(config)}/chat/completions`,
+      url: `${baseUrl(config, this.deps.defaultBaseUrl)}/chat/completions`,
       method: "POST" as const,
       headers: this.headers(config, true),
-      // store: false keeps the note out of OpenAI's own retained history.
-      body: JSON.stringify({ model: config.model, store: false, ...body }),
+      // OpenAI's storage opt-out is not part of all OpenAI-compatible APIs.
+      body: JSON.stringify({ model: config.model, ...(this.id === "openai" ? { store: false } : {}), ...body }),
     };
   }
 
@@ -308,7 +315,7 @@ export class OpenAIProvider implements AIProvider {
       run: (model, nextModelWaiting) =>
         withApiKeyFallback({
           keys: base.apiKeys,
-          missingKeyMessage: "No OpenAI API key is configured",
+          missingKeyMessage: `No ${this.displayName} API key is configured`,
           ...(this.deps.logger === undefined ? {} : { logger: this.deps.logger }),
           run: (apiKey) =>
             run({
@@ -325,10 +332,10 @@ export class OpenAIProvider implements AIProvider {
     const config = this.deps.config();
 
     if (config.apiKeys.length === 0 && config.apiKey.trim().length === 0) {
-      throw new ProviderError("missing_key", "No OpenAI API key is configured", false);
+      throw new ProviderError("missing_key", `No ${this.displayName} API key is configured`, false);
     }
     if (config.model.trim().length === 0) {
-      throw new ProviderError("model_not_found", "No OpenAI model is configured", false);
+      throw new ProviderError("model_not_found", `No ${this.displayName} model is configured`, false);
     }
 
     const apiKeys =
@@ -342,9 +349,9 @@ export class OpenAIProvider implements AIProvider {
   }
 }
 
-function baseUrl(config: ProviderRequestConfig): string {
+function baseUrl(config: ProviderRequestConfig, defaultBaseUrl = OPENAI_DEFAULT_BASE_URL): string {
   const raw = config.baseUrl?.trim();
-  const base = raw === undefined || raw.length === 0 ? OPENAI_DEFAULT_BASE_URL : raw;
+  const base = raw === undefined || raw.length === 0 ? defaultBaseUrl : raw;
   return base.replace(/\/+$/, "");
 }
 

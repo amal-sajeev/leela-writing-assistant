@@ -5,7 +5,7 @@
  * rendering concern. Every layer of the plugin speaks these types.
  */
 
-export const PROVIDER_IDS = ["mistral", "openai", "anthropic", "gemini"] as const;
+export const PROVIDER_IDS = ["mistral", "openai", "anthropic", "gemini", "openrouter"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export const REVIEW_DEPTHS = ["quick", "standard", "exhaustive"] as const;

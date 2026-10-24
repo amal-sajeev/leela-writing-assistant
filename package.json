@@ -1,7 +1,7 @@
 {
   "name": "lyra-companion",
-  "version": "0.1.8",
-  "description": "Story-aware AI reviews, continuity checks, and in-character chat for writers.",
+  "version": "0.1.9",
+  "description": "Sharpen your draft, catch continuity slips, and talk through your story with a story-aware AI companion.",
   "author": "Amal Sajeev <amsajeev333@gmail.com>",
   "private": true,
   "engines": {

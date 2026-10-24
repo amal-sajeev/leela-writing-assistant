@@ -32,6 +32,7 @@ import { AnthropicProvider } from "./providers/anthropic-provider";
 import { GeminiProvider } from "./providers/gemini-provider";
 import { MistralProvider } from "./providers/mistral-provider";
 import { OpenAIProvider } from "./providers/openai-provider";
+import { OpenRouterProvider } from "./providers/openrouter-provider";
 import type { ProviderRequestConfig } from "./providers/provider";
 import { describeProviderError, toProviderError } from "./providers/provider-errors";
 import { ProviderRegistry } from "./providers/provider-registry";
@@ -142,6 +143,7 @@ export default class LyraPlugin extends Plugin {
     this.providers.register(new OpenAIProvider(deps("openai")));
     this.providers.register(new AnthropicProvider(deps("anthropic")));
     this.providers.register(new GeminiProvider(deps("gemini")));
+    this.providers.register(new OpenRouterProvider(deps("openrouter")));
 
     this.keeper = new StoryKeeper({
       hasBrief: (folder) =>

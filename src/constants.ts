@@ -61,6 +61,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderId, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   gemini: "Gemini",
+  openrouter: "OpenRouter",
 };
 
 /**
@@ -72,12 +73,14 @@ export const DEFAULT_MODELS: Record<ProviderId, string> = {
   openai: "gpt-5.6-terra",
   anthropic: "claude-sonnet-5-5",
   gemini: "gemini-3.6-flash",
+  openrouter: "openrouter/free",
 };
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
 
 export const MISTRAL_DEFAULT_BASE_URL = "https://api.mistral.ai/v1";
 export const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
+export const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
 /** Anthropic's paths carry their own version segment, so this stops at the host. */
 export const ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com";

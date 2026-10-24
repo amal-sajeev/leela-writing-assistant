@@ -1,10 +1,9 @@
 # Lyra
 
-**Story-aware AI reviews, continuity checks, and in-character chat for writers.**
+**Sharpen your draft, catch continuity slips, and talk through your story with a story-aware AI companion.**
 
-Lyra catches craft and continuity snags, talks through your story, and leaves
-every edit in your hands. Pick a passage, ask why, or let her read along as you
-write.
+Shape how she reviews, give her your story's context, and keep every edit in
+your hands. Pick a passage, ask why, or let her read along as you write.
 
 ![Lyra reviews a selection, explains a note, and chats with the writer](images/lyra-demo.gif)
 
@@ -205,7 +204,8 @@ chats between sessions** and saved chats and memory are left out of requests.
 1. `npm ci`, then `npm run build`. The build copies the plugin and separate
    artwork files into the vault named in `.vaultpath` (or `OBSIDIAN_VAULT_PATH`).
 2. In Obsidian: Settings → Community plugins → enable **Lyra**.
-3. Settings → Lyra: choose a provider (Mistral, OpenAI, Anthropic or Gemini),
+3. Settings → Lyra: choose a provider (Mistral, OpenAI, Anthropic, Gemini or
+   OpenRouter),
    paste its API key, and press **Test**. Optionally add up to three more keys
    and up to two fallback models; they are tried in order when the main key or
    model is rate-limited or unavailable.
@@ -244,9 +244,13 @@ A note with `lyra: false` in its frontmatter is left alone.
 ## What is sent, and what is kept
 
 Lyra uses network access to send review and chat text to the AI provider you
-choose (Mistral, OpenAI, Anthropic or Gemini) and receive its response. Novel
-notes are sent when the automatic novel-notes feature is enabled. Requests to
-OpenAI and Gemini explicitly opt out of the provider's request storage.
+choose (Mistral, OpenAI, Anthropic, Gemini or OpenRouter) and receive its
+response. Novel notes are sent when the automatic novel-notes feature is
+enabled. Requests to OpenAI and Gemini explicitly opt out of the provider's
+request storage. OpenRouter says prompts and completions are not logged by
+default, but requests are routed to model providers according to your privacy
+settings, and those providers may have their own data practices ([OpenRouter
+privacy and logging](https://openrouter.ai/support)).
 
 A review sends the passage, a few thousand characters either side of it, the
 comments she has already made nearby, your story brief with its canon notes if
